@@ -1,0 +1,6 @@
+# OS-level packages (apt-get) required in container
+curl
+wget
+git
+procps
+ca-certificates

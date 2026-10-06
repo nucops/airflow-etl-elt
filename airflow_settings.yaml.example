@@ -1,0 +1,37 @@
+# ==============================================================================
+# Infrastructure as Code (IaC) - Declarative Airflow Configuration
+# Auto-provisioned by Astronomer Astro CLI and CI/CD pipelines
+# ==============================================================================
+
+airflow:
+  variables:
+    - variable_name: "NAMMAMART_DATA_DIR"
+      variable_value: "include/data/nammamart"
+      description: "Root path for NammaMart daily CSV feeds"
+
+    - variable_name: "NAMMAMART_WAREHOUSE_PATH"
+      variable_value: "include/warehouse.duckdb"
+      description: "Path to local analytical DuckDB database file"
+
+    - variable_name: "NAMMAMART_QUARANTINE_PATH"
+      variable_value: "include/quarantine"
+      description: "Directory storing partitioned failure records with failure_reason"
+
+    - variable_name: "SLACK_WEBHOOK_URL"
+      variable_value: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+      description: "Slack incoming webhook for pipeline failure alerts (read via Variable.get())"
+
+  pools:
+    - pool_name: "nammamart_etl_pool"
+      pool_slot: 4
+      pool_description: "Worker slots reserved for parallel extract & validate ETL tasks"
+
+    - pool_name: "nammamart_elt_pool"
+      pool_slot: 4
+      pool_description: "Worker slots reserved for SQL transformation ELT tasks"
+
+  connections:
+    - conn_id: "nammamart_duckdb"
+      conn_type: "sqlite"
+      conn_description: "DuckDB local warehouse connection"
+      conn_host: "include/warehouse.duckdb"

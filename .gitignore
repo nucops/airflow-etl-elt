@@ -1,0 +1,29 @@
+# Environment & Astro
+.astro/
+airflow_settings.yaml
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# DuckDB database files and temporary locks
+*.duckdb
+*.duckdb.tmp
+*.duckdb.wal
+
+# Quarantine outputs and local test runs
+include/quarantine/*
+!include/quarantine/.gitkeep
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json

@@ -1,0 +1,39 @@
+name: CI Pipeline Verification
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with Ruff
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Verify DAG Integrity (Zero Import Errors)
+        run: |
+          export PYTHONPATH="$PWD:$PWD/dags:$PWD/include"
+          python -m py_compile dags/nammamart_etl_shubham.py
+          python -m py_compile dags/nammamart_elt_shubham.py
+          python -m py_compile include/dq_checks.py

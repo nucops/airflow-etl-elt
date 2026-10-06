@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Astro: Start Airflow Stack",
+      "type": "shell",
+      "command": "astro dev start",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Astro: Stop Airflow Stack",
+      "type": "shell",
+      "command": "astro dev stop",
+      "problemMatcher": []
+    },
+    {
+      "label": "Astro: Restart Airflow Stack",
+      "type": "shell",
+      "command": "astro dev restart",
+      "problemMatcher": []
+    },
+    {
+      "label": "Astro: Check DAG Import Errors",
+      "type": "shell",
+      "command": "astro dev run dags list-import-errors",
+      "problemMatcher": []
+    },
+    {
+      "label": "Astro: Test ETL DAG",
+      "type": "shell",
+      "command": "astro dev run dags test nammamart_etl",
+      "problemMatcher": []
+    },
+    {
+      "label": "Astro: Test ELT DAG",
+      "type": "shell",
+      "command": "astro dev run dags test nammamart_elt",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker Compose: Start Airflow Stack",
+      "type": "shell",
+      "command": "docker compose up -d",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker Compose: Stop Airflow Stack",
+      "type": "shell",
+      "command": "docker compose down",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint & Format Python (Ruff)",
+      "type": "shell",
+      "command": "ruff check --fix . && ruff format .",
+      "problemMatcher": []
+    }
+  ]
+}

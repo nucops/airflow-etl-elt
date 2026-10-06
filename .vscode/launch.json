@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python Debugger: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/dags:${workspaceFolder}/include"
+      }
+    },
+    {
+      "name": "Python: Current File (Fallback)",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/dags:${workspaceFolder}/include"
+      }
+    },
+    {
+      "name": "Python Debugger: Test DQ Checks",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/include/dq_checks.py",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/include"
+      }
+    }
+  ]
+}

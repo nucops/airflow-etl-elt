@@ -1,0 +1,10 @@
+.astro
+.git
+.github
+.vscode
+.devcontainer
+__pycache__
+*.pyc
+upstream/
+include/quarantine/*
+!include/quarantine/.gitkeep

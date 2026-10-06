@@ -1,0 +1,102 @@
+version: '3.8'
+
+# ==============================================================================
+# Infrastructure as Code (IaC) - NammaMart Multi-Service Airflow Compose Stack
+# ==============================================================================
+
+networks:
+  nammamart_net:
+    driver: bridge
+    name: nammamart_net
+
+volumes:
+  postgres_data:
+    name: nammamart_postgres_data
+  quarantine_volume:
+    name: nammamart_quarantine_volume
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - .env
+  environment:
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+    - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqJZmc=
+    - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+    - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    - AIRFLOW__CORE__DEFAULT_TIMEZONE=${AIRFLOW__CORE__DEFAULT_TIMEZONE}
+    - AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE=${AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE}
+    - PYTHONPATH=/opt/airflow
+  volumes:
+    - ./dags:/opt/airflow/dags:rw
+    - ./include:/opt/airflow/include:rw
+    - ./plugins:/opt/airflow/plugins:rw
+  networks:
+    - nammamart_net
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nammamart-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - nammamart_net
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: nammamart-airflow-init
+    command: >
+      bash -c "airflow db migrate &&
+      airflow users create --role Admin --username ${AIRFLOW_USER} --password ${AIRFLOW_PASSWORD} --email ${AIRFLOW_EMAIL} --firstname Admin --lastname User || true"
+    restart: on-failure
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: nammamart-airflow-webserver
+    command: airflow webserver
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: nammamart-airflow-scheduler
+    command: airflow scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  duckdb-shell:
+    <<: *airflow-common
+    container_name: nammamart-duckdb-shell
+    command: python -c "import duckdb; con = duckdb.connect('/opt/airflow/include/warehouse.duckdb'); print('Connected to NammaMart Warehouse. Tables:'); print(con.execute('SHOW TABLES').fetchall())"
+    profiles:
+      - tools

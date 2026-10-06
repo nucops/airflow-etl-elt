@@ -1,0 +1,9 @@
+pandas
+duckdb
+scikit-learn
+apache-airflow-providers-slack
+slack_sdk
+pendulum
+ruff
+pytest
+debugpy

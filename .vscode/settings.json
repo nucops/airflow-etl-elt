@@ -1,0 +1,27 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/dags",
+    "${workspaceFolder}/include"
+  ],
+  "editor.formatOnSave": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  "files.associations": {
+    "*.duckdb": "sqlite",
+    "*.vtt": "plaintext"
+  },
+  "sqltools.connections": [
+    {
+      "name": "NammaMart DuckDB Warehouse",
+      "dialect": "SQLite",
+      "database": "${workspaceFolder}/include/warehouse.duckdb"
+    }
+  ],
+  "dev.containers.mountWaylandSocket": false
+}

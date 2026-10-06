@@ -1,0 +1,50 @@
+{
+  "name": "NammaMart Data Pipeline (Airflow & DuckDB)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.extraPaths": [
+          "/opt/airflow",
+          "./dags",
+          "./include"
+        ],
+        "editor.formatOnSave": true,
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+          }
+        },
+        "files.associations": {
+          "*.duckdb": "sqlite"
+        }
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "mtxr.sqltools",
+        "qwtel.sqlite-viewer",
+        "mechatroner.rainbow-csv",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "tamasfe.even-better-toml",
+        "ms-python.debugpy",
+        "ms-vscode.makefile-tools"
+      ]
+    }
+  },
+  "forwardPorts": [
+    8080,
+    5432
+  ],
+  "remoteUser": "astro",
+  "postCreateCommand": "make init",
+  "shutdownAction": "stopContainer"
+}

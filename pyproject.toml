@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [
+    ".git",
+    "upstream",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+ignore = [
+    "EXE002",  # Executable bit without shebang (occurs on cross-platform bind mounts)
+]
