@@ -1,13 +1,19 @@
-name: CI Pipeline Verification
+name: CI/CD Pipeline & Docker Build
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   validate-and-test:
+    name: Code Quality & Integrity Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -34,6 +40,51 @@ jobs:
       - name: Verify DAG Integrity (Zero Import Errors)
         run: |
           export PYTHONPATH="$PWD:$PWD/dags:$PWD/include"
-          python -m py_compile dags/nammamart_etl_shubham.py
-          python -m py_compile dags/nammamart_elt_shubham.py
+          python -m py_compile dags/nammamart_etl.py
+          python -m py_compile dags/nammamart_elt.py
           python -m py_compile include/dq_checks.py
+
+      - name: Run Data Quality Suite
+        run: |
+          export PYTHONPATH="$PWD:$PWD/include"
+          python include/dq_checks.py
+
+  build-and-push-docker:
+    name: Build & Publish Container Image
+    needs: validate-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+            type=sha,prefix=sha-
+            type=ref,event=branch
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

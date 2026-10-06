@@ -16,6 +16,7 @@ volumes:
     name: nammamart_quarantine_volume
 
 x-airflow-common: &airflow-common
+  image: ghcr.io/nucops/airflow-etl-elt:latest
   build:
     context: .
     dockerfile: Dockerfile

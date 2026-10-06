@@ -178,8 +178,10 @@ Open a terminal on your host machine (where Docker is running).
 astro dev start
 ```
 
-**Option B — Standalone Docker Compose (Host-independent, No Astro CLI needed)**:
+**Option B — Standalone Docker Compose (Uses Pre-built CI/CD Container Image)**:
 ```bash
+# Pull the pre-built image published by GitHub Actions (or builds locally if offline)
+docker compose pull
 docker compose up -d
 ```
 
