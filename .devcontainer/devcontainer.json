@@ -1,9 +1,6 @@
 {
   "name": "NammaMart Data Pipeline (Airflow & DuckDB)",
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": ".."
-  },
+  "image": "ghcr.io/nucops/airflow-etl-elt:latest",
   "customizations": {
     "vscode": {
       "settings": {
