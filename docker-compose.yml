@@ -65,15 +65,13 @@ services:
   airflow-init:
     <<: *airflow-common
     container_name: nammamart-airflow-init
-    command: >
-      bash -c "airflow db migrate &&
-      airflow users create --role Admin --username ${AIRFLOW_USER} --password ${AIRFLOW_PASSWORD} --email ${AIRFLOW_EMAIL} --firstname Admin --lastname User || true"
+    command: airflow db migrate
     restart: on-failure
 
   airflow-webserver:
     <<: *airflow-common
     container_name: nammamart-airflow-webserver
-    command: airflow webserver
+    command: airflow api-server
     ports:
       - "${AIRFLOW_WEBSERVER_PORT}:8080"
     healthcheck:
