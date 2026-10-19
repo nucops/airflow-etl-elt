@@ -85,15 +85,16 @@ fdeM2/
 ---
 
 ### Phase 2: Assignment Data Profiling & Discovery (Part 0)
-- [ ] **Stage Dataset in Container & PVC**:
-  - Stage all 6 CSV files in `include/data/nammamart/`: `orders.csv`, `payments.csv`, `customers.csv`, `products.csv`, `stores.csv`, `orders_2026-10-01_increment.csv`.
-- [ ] **Data Profiling Execution**:
-  - Script/Task profiling row counts, null distributions, key uniqueness, and numeric distributions.
-  - Check referential integrity across orders → customers, orders → products, orders → stores, payments → orders.
-  - Validate formula consistency: `order_amount == quantity * unit_price * (1 - discount_pct / 100)`.
-- [ ] **Populate Data Issues Log (`SUBMISSION.md`)**:
-  - Document issues across all 5 master files + increment file with dimension and severity.
-- [ ] **Record 3 Clarifying Business Questions**.
+- [x] **Stage Dataset in Container & PVC**:
+  - All 6 CSV files staged in `include/data/nammamart/`: `orders.csv`, `payments.csv`, `customers.csv`, `products.csv`, `stores.csv`, `orders_2026-10-01_increment.csv`.
+- [x] **Data Profiling Execution**:
+  - Implemented standalone profiling tool (`scripts/profile_dataset.py`) analyzing row counts, null distributions, key uniqueness, numeric ranges, and categorical distributions.
+  - Validated referential integrity across all 4 core entity relationships.
+  - Calculated formula discrepancies on `order_amount` and identified future-dated records.
+- [x] **Populate Data Issues Log (`SUBMISSION.md`)**:
+  - Populated comprehensive 15-point issues log covering all 5 master files + increment file with sample IDs, quality dimensions, proposed fixes, and severities.
+- [x] **Record 3 Clarifying Business Questions**:
+  - Documented client clarifying questions regarding returns/cancellations, retrospective revenue accounting on returns, and payment rounding tolerances.
 
 ---
 

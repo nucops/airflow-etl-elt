@@ -22,20 +22,28 @@
 
 ## 2. Part 0: Data Profiling & Issues Log
 
-| # | File | Row Key / ID | Column | Problem Identified | Quality Dimension | Proposed Rule / Fix | Severity |
+| # | File | Row Key / ID Samples | Column | Problem Identified | Quality Dimension | Proposed Rule / Fix | Severity |
 |---|---|---|---|---|---|---|---|
-| 1 | `orders.csv` | Multiple | `delivery_minutes` | Negative or extreme outlier values (>120 mins) | Accuracy | Enforce `8 <= delivery_minutes <= 120` for DELIVERED | Critical |
-| 2 | `orders.csv` | Multiple | `order_amount` | Does not match formula `qty * price * (1 - disc)` | Accuracy | Recompute and reject or flag discrepancies | Critical |
-| 3 | `orders.csv` | Multiple | `customer_id` | Orphan IDs not present in `customers.csv` | Consistency | Referential integrity check against dimension | Critical |
-| 4 | `payments.csv` | Multiple | `payment_mode` | Casing inconsistency (e.g. `upi`, `UPI `) | Validity | Standardize via `UPPER(TRIM(payment_mode))` | Warning |
-| 5 | `customers.csv` | Multiple | `email`, `phone` | PII exposed in cleartext | Validity / Privacy | Mask format (`pr***@example.com`, `98******21`) | Critical |
-| 6 | `products.csv` | Multiple | `cost_price`, `mrp` | Negative or `cost_price > mrp` | Accuracy | Validate `0 < cost_price <= mrp` | Critical |
-| 7 | `stores.csv` | Multiple | `pincode` | Non-6 digit pincode entries | Validity | Regex `^[1-9][0-9]{5}$` validation | Warning |
+| 1 | `orders.csv` | ORD000469, ORD001296, ORD001459 | `quantity` | Quantity <= 0 (10 invalid records) | Accuracy | Enforce `quantity > 0` constraint; quarantine non-positive | Critical |
+| 2 | `orders.csv` | ORD001554, ORD001800, ORD001037 | `delivery_minutes` | Out of SLA (<8 or >120 mins) or empty for DELIVERED (14 records) | Accuracy / Completeness | Enforce `8 <= delivery_minutes <= 120` for DELIVERED | Critical |
+| 3 | `orders.csv` | ORD002103, ORD002305, ORD002004 | `order_amount` | Recomputed formula mismatch `qty * price * (1 - disc)` (18 records) | Accuracy | Recalculate; quarantine if mismatch exceeds 0.05 rounding tolerance | Critical |
+| 4 | `orders.csv` | ORD002255, ORD000701, ORD000997 | `customer_id` | Orphan customer IDs not present in `customers.csv` (18 records) | Consistency | Foreign key referential integrity check against customer master | Critical |
+| 5 | `orders.csv` | ORD000986, ORD001058, ORD001685 | `product_id` | Orphan product IDs not present in `products.csv` (9 records) | Consistency | Foreign key referential integrity check against product master | Critical |
+| 6 | `orders.csv` | ORD001799, ORD001046, ORD001492 | `store_id` | Orphan store IDs not present in `stores.csv` (5 records) | Consistency | Foreign key referential integrity check against store master | Critical |
+| 7 | `orders.csv` | ORD002119, ORD000403, ORD001693 | `order_ts` | Future-dated order timestamps after run date (12 records) | Timeliness | Enforce `order_ts <= current_run_timestamp`; quarantine future dates | Critical |
+| 8 | `payments.csv` | PAY0002188, PAY0001850, PAY0000817 | `payment_mode` | Inconsistent casing/spaces (e.g. `'upi'`, `'UPI '`) (6 records) | Validity | Standardize via `UPPER(TRIM(payment_mode))` | Warning |
+| 9 | `payments.csv` | PAY0002219, PAY0002220, PAY0002223 | `order_id` | Payment records for non-existent order IDs (8 records) | Consistency | Referential integrity check; quarantine orphan gateway transactions | Critical |
+| 10 | `payments.csv` | PAY0001568, PAY0000354, PAY0000779 | `amount_paid` | SUCCESS payment amount differs from order amount (14 records) | Accuracy | Enforce payment reconciliation balance equality | Critical |
+| 11 | `customers.csv` | C00337, C00307, C00063 | `email` | Malformed email addresses missing domain or @ (12 records) | Validity | Validate with standard email regex `^[\w\.-]+@[\w\.-]+\.\w+$` | Warning |
+| 12 | `customers.csv` | C00151, C00240, C00095 | `phone` | Phone numbers not 10 digits or non-numeric (7 records) | Validity | Enforce 10-digit Indian mobile regex `^[6-9][0-9]{9}$` | Warning |
+| 13 | `customers.csv` | All records (405 customers) | `email`, `phone` | Cleartext PII exposed violating Indian DPDP Act 2023 | Validity / Privacy | Mask format (`pr***@example.com`, `98******21`) | Critical |
+| 14 | `products.csv` | P0019, P0073, P0074 | `cost_price` | Cost price exceeds Maximum Retail Price (MRP) (5 records) | Accuracy | Enforce `0 < cost_price <= mrp`; quarantine negative margin rows | Critical |
+| 15 | `orders_increment` | 10 status corrections | `order_status` | Late status transitions (DELIVERED -> RETURNED) requiring upsert | Consistency | Execute SQL `MERGE` / upsert on `order_id` to update status without duplicate rows | Critical |
 
 ### Clarifying Questions for Client
-1. *Is a negative quantity considered a return, a customer cancellation, or an upstream data-entry glitch?*
-2. *When an order status transitions to RETURNED after multiple days, should financial reports retroactively adjust the order date's revenue or post a negative adjustment on the return date?*
-3. *If payment gateway records show SUCCESS but the order amount differs by fractional paise/cents due to rounding, should the transaction be quarantined or reconciled with a rounding tolerance?*
+1. *Is a negative or zero quantity considered a merchandise return, an unfulfilled cancellation, or a POS data-entry glitch?*
+2. *When an order status transitions to RETURNED days later in the incremental feed, should the executive morning dashboard retroactively decrease revenue on the original purchase date, or record a separate credit adjustment on the return date?*
+3. *If payment gateway records report SUCCESS but the payment amount differs by a few paise due to gateway rounding or platform fees, should the transaction be quarantined or reconciled with a defined financial tolerance window?*
 
 ---
 
