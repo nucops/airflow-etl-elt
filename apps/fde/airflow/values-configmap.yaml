@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-values
+  namespace: fde
+data:
+  values.yaml: |
+    # Official Apache Airflow Helm Chart values
+    # Optimized for homelab KubernetesExecutor deployment with CNPG external DB
+    # Ref: https://airflow.apache.org/docs/helm-chart/stable/index.html
+
+    # -- Airflow version and image
+    airflowVersion: "2.11.0"
+    defaultAirflowRepository: apache/airflow
+    defaultAirflowTag: "2.11.0"
+
+    # -- Executor: KubernetesExecutor for per-task pod isolation
+    executor: KubernetesExecutor
+
+    # -- Disable embedded PostgreSQL (using external CNPG)
+    postgresql:
+      enabled: false
+
+    # -- Disable Redis (not needed for KubernetesExecutor)
+    redis:
+      enabled: false
+
+    # -- External database connection via secret
+    data:
+      metadataSecretName: airflow-db-url
+
+    # -- Webserver secret key (for Flask session signing)
+    webserverSecretKeySecretName: airflow-webserver-secret
+
+    # -- Disable Helm hooks for Flux/GitOps compatibility
+    migrateDatabaseJob:
+      enabled: true
+      useHelmHooks: false
+      jobAnnotations:
+        sidecar.istio.io/inject: "false"
+    createUserJob:
+      enabled: true
+      useHelmHooks: false
+      jobAnnotations:
+        sidecar.istio.io/inject: "false"
+
+    # -- Webserver configuration
+    webserver:
+      replicas: 1
+      defaultUser:
+        enabled: true
+        role: Admin
+        username: admin
+        email: ${USER_EMAIL}
+        firstName: Shubham
+        lastName: Admin
+        password: ${password}
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      service:
+        type: ClusterIP
+      podAnnotations:
+        nucops.com/telemetry-metrics: "true"
+        nucops.com/telemetry-logs: "true"
+
+    # -- Scheduler configuration
+    scheduler:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+
+    # -- Triggerer for deferrable operators
+    triggerer:
+      enabled: true
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+
+    # -- DAG deployment via git-sync (disabled until private DAG repo is provisioned)
+    dags:
+      persistence:
+        enabled: false
+      gitSync:
+        enabled: false
+
+    # -- KubernetesExecutor pod template defaults
+    workers:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+
+    # -- StatsD metrics exporter (Prometheus-compatible)
+    statsd:
+      enabled: true
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+
+    # -- Airflow configuration overrides
+    config:
+      core:
+        dags_are_paused_at_creation: "True"
+        load_examples: "False"
+      webserver:
+        expose_config: "True"
+        instance_name: "NucOps FDE Airflow"
+      logging:
+        remote_logging: "False"
+
+    # -- Disable built-in ingress (we manage ingress externally via Traefik)
+    ingress:
+      web:
+        enabled: false
+      flower:
+        enabled: false

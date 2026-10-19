@@ -2,7 +2,7 @@
 
 > **Repository**: [nucops/airflow-etl-elt](https://github.com/nucops/airflow-etl-elt) (`fdeM2`)  
 > **Course**: IIT Roorkee CEC & Futurense · *Data Pipeline to ML Model* (FDAIE Module 2)  
-> **Assignment Reference**: `upstream/assignment/ASSIGNMENT.md`  
+> **Assignment Reference**: `assignment/ASSIGNMENT.md`  
 > **Target Branch**: `solution`  
 > **Target Architecture**: **Pure Kubernetes Workload** deployable via Kustomize & Flux CD following [`nucops/public-workloads`](https://github.com/nucops/public-workloads) (Astro CLI and Docker Compose deprecated)
 

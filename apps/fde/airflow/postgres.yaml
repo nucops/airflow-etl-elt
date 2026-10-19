@@ -1,0 +1,18 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: airflow-db
+  namespace: fde
+spec:
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  enableSuperuserAccess: true
+
+  storage:
+    size: 16Gi
+    storageClass: ${DB_SC}
+  bootstrap:
+    initdb:
+      database: airflow
+      owner: airflow
+      secret:
+        name: airflow-db-app
