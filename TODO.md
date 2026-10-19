@@ -62,36 +62,25 @@ fdeM2/
 
 ## 📋 Comprehensive Implementation Checklist
 
-### Phase 1: Pure Kubernetes Kustomize Infrastructure (`apps/nammamart/`)
-- [ ] **Namespace Manifest (`apps/nammamart/namespace.yaml`)**:
-  - Namespace `nammamart` with PSS baseline and restricted audit labels.
-- [ ] **ConfigMap Manifest (`apps/nammamart/configmap.yaml`)**:
-  - Non-sensitive Airflow configs (`AIRFLOW__CORE__DEFAULT_TIMEZONE=Asia/Kolkata`, `AIRFLOW__CORE__LOAD_EXAMPLES=false`, `AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=false`, etc.).
-  - Pipeline paths: `PYTHONPATH`, `WAREHOUSE_PATH`, `DATA_DIR`.
-- [ ] **Persistent Volume Claims (`apps/nammamart/pvc.yaml`)**:
-  - Persistent volume for DuckDB storage (`include/warehouse.duckdb`) and failed row quarantine files (`include/quarantine/`).
-- [ ] **Metadata Database (`apps/nammamart/postgres.yaml`)**:
-  - Postgres 15 deployment with PVC and headless/ClusterIP Service for Airflow metadata.
-- [ ] **Airflow Webserver / API Server (`apps/nammamart/webserver.yaml`)**:
-  - Deployment running `airflow api-server` / web UI with non-root security context.
-  - Startup, readiness, and liveness probes on `/api/v2/monitor/health` or `/health`.
-  - Resource requests: `cpu: 100m, memory: 256Mi`; limits: `cpu: 500m, memory: 1Gi`.
-- [ ] **Airflow Scheduler (`apps/nammamart/scheduler.yaml`)**:
-  - Deployment running `airflow scheduler` with access to DAGs and shared warehouse PVC.
-  - Dedicated resource bounds and health probes.
-- [ ] **Service Manifest (`apps/nammamart/service.yaml`)**:
-  - ClusterIP service exposing port 8080.
-- [ ] **Ingress Manifest (`apps/nammamart/ingress.yaml`)**:
-  - Traefik ingress class.
-  - Host: `nammamart.${CLUSTER_DOMAIN}`.
-  - Homepage annotations (`gethomepage.dev/enabled: 'true'`, group, icon, siteMonitor).
-- [ ] **Kustomization Files**:
-  - `apps/nammamart/kustomization.yaml`: Labels (`app.kubernetes.io/name: nammamart`, `app.kubernetes.io/part-of: public-workloads`).
-  - Root `kustomization.yaml`: Aggregates `./apps/nammamart`.
-- [ ] **CI Validation Workflow (`.github/workflows/validate.yaml`)**:
-  - Lint manifests via `kubectl kustomize .`.
-  - Reject secrets (`grep -Eq '^kind: (Secret|SealedSecret)$'`).
-  - Validate against Kubernetes OpenAPI schemas via `ghcr.io/yannh/kubeconform:v0.8.0`.
+### Phase 1: Pure Kubernetes Kustomize Infrastructure (`apps/fde/`)
+- [x] **Namespace Manifest (`apps/fde/namespace.yaml`)**:
+  - Namespace `fde` with PSS baseline and audit/warn labels (cluster annotations decoupled).
+- [x] **ConfigMap Manifest (`apps/fde/airflow/values-configmap.yaml`)**:
+  - Helm chart values with non-sensitive Airflow configs, generic admin user, and cluster telemetry decoupled.
+- [x] **Metadata Database Cluster (`apps/fde/airflow/postgres.yaml`)**:
+  - CloudNativePG PostgreSQL 16 cluster with parameterized storage class `${DB_SC}`.
+- [x] **HelmRelease & Repository (`apps/fde/airflow/release.yaml`, `repository.yaml`)**:
+  - Official Apache Airflow Helm repository and HelmRelease 1.22.0.
+- [x] **Ingress Manifest (`apps/fde/airflow/ingress.yaml`)**:
+  - Traefik IngressRoute with `airflow.${CLUSTER_DOMAIN}` and Homepage integration (`gethomepage.dev/*`).
+- [x] **Kustomization Files**:
+  - `apps/fde/airflow/kustomization.yaml`: aggregates release, repository, postgres, values-configmap, ingress (no secret resources).
+  - `apps/fde/kustomization.yaml`: aggregates namespace and airflow sub-tier.
+  - Root `kustomization.yaml`: aggregates `./apps/fde`.
+- [x] **Reference Example Template (`apps/fde/example.yaml`)**:
+  - Consolidated, fully commented reference template demonstrating private database secrets and Flux GitRepository/Kustomization with consumer patches.
+- [x] **CI Validation Workflow (`.github/workflows/validate.yaml`)**:
+  - Automated GitHub Actions workflow rendering `kubectl kustomize .`, strictly rejecting Secrets/SealedSecrets, and validating schemas via `kubeconform`.
 
 ---
 
