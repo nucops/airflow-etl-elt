@@ -1,0 +1,108 @@
+# ==============================================================================
+# Example Configurations for Consuming Clusters (Reference Only)
+# ==============================================================================
+# The following resources and overlays are omitted from this public workload
+# and must be provided by the consuming GitOps repository (e.g. via private
+# secrets, Vault, SealedSecrets, or Flux CD patches and postBuild substitutions).
+#
+# All content below is commented out to prevent accidental deployment or schema
+# validation conflicts.
+# ==============================================================================
+
+# ---
+# # 1. CloudNativePG Database User Secret (airflow-db-app)
+# # Referenced by Cluster (spec.bootstrap.initdb.secret.name)
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: airflow-db-app
+#   namespace: fde
+# type: Opaque
+# stringData:
+#   username: airflow
+#   password: changeme-super-secret-password
+
+# ---
+# # 2. Airflow Metadata Database Connection URL Secret (airflow-db-url)
+# # Referenced by Helm values (data.metadataSecretName)
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: airflow-db-url
+#   namespace: fde
+# type: Opaque
+# stringData:
+#   connection: postgresql://airflow:changeme-super-secret-password@airflow-db-rw.fde.svc.cluster.local:5432/airflow?sslmode=disable
+
+# ---
+# # 3. Airflow Webserver Flask Session Secret Key (airflow-webserver-secret)
+# # Referenced by Helm values (webserverSecretKeySecretName)
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: airflow-webserver-secret
+#   namespace: fde
+# type: Opaque
+# stringData:
+#   webserver-secret-key: changeme-random-32-byte-hex-key
+
+# ---
+# # 4. Consuming Flux CD GitRepository & Kustomization with Patches
+# # Demonstrates how a private cluster consumes this repo, substitutes domains,
+# # and injects custom namespace annotations or ingress middlewares.
+# apiVersion: source.toolkit.fluxcd.io/v1
+# kind: GitRepository
+# metadata:
+#   name: airflow-etl-elt
+#   namespace: flux-system
+# spec:
+#   interval: 5m0s
+#   url: https://github.com/nucops/airflow-etl-elt
+#   ref:
+#     branch: solution
+# ---
+# apiVersion: kustomize.toolkit.fluxcd.io/v1
+# kind: Kustomization
+# metadata:
+#   name: apps-fde
+#   namespace: flux-system
+# spec:
+#   interval: 5m0s
+#   path: ./apps/fde
+#   commonMetadata:
+#     annotations:
+#       cert-manager.io/cluster-issuer: letsencrypt-prod
+#   prune: true
+#   wait: true
+#   timeout: 15m0s
+#   dependsOn:
+#     - name: traefik
+#     - name: storage
+#   sourceRef:
+#     kind: GitRepository
+#     name: airflow-etl-elt
+#   patches:
+#     # Example: inject cluster-specific annotations into the namespace (e.g. backup, djangma)
+#     - target:
+#         kind: Namespace
+#         name: fde
+#       patch: |
+#         - op: add
+#           path: /metadata/annotations
+#           value:
+#             example.com/djangma: 'true'
+#             example.com/backup: 'true'
+#     # Example: inject custom Traefik middleware into the IngressRoute
+#     - target:
+#         kind: IngressRoute
+#         name: airflow
+#       patch: |
+#         - op: add
+#           path: /spec/routes/0/middlewares
+#           value:
+#             - name: custom-middleware
+#               namespace: traefik
+#   postBuild:
+#     substitute:
+#       CLUSTER_DOMAIN: example.test
+#       DB_SC: local-path
