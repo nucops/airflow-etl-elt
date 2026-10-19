@@ -164,26 +164,26 @@ def nammamart_elt_pipeline():
             INSERT INTO stg_orders
             SELECT
                 TRIM(order_id) AS order_id,
-                CAST(order_ts AS TIMESTAMP) AS order_ts,
-                CAST(STRFTIME(CAST(order_ts AS TIMESTAMP), '%Y-%m-%d') AS DATE) AS order_date,
+                TRY_CAST(order_ts AS TIMESTAMP) AS order_ts,
+                CAST(STRFTIME(TRY_CAST(order_ts AS TIMESTAMP), '%Y-%m-%d') AS DATE) AS order_date,
                 TRIM(customer_id) AS customer_id,
                 TRIM(store_id) AS store_id,
                 TRIM(product_id) AS product_id,
-                CAST(quantity AS INTEGER) AS quantity,
-                CAST(unit_price AS DECIMAL(10, 2)) AS unit_price,
-                CAST(discount_pct AS DECIMAL(5, 2)) AS discount_pct,
-                CAST(order_amount AS DECIMAL(10, 2)) AS order_amount,
+                TRY_CAST(quantity AS INTEGER) AS quantity,
+                TRY_CAST(unit_price AS DECIMAL(10, 2)) AS unit_price,
+                TRY_CAST(discount_pct AS DECIMAL(5, 2)) AS discount_pct,
+                TRY_CAST(order_amount AS DECIMAL(10, 2)) AS order_amount,
                 UPPER(TRIM(payment_mode)) AS payment_mode,
                 UPPER(TRIM(order_status)) AS order_status,
                 TRIM(channel) AS channel,
-                CASE WHEN delivery_minutes IS NOT NULL AND TRIM(delivery_minutes) != '' THEN CAST(delivery_minutes AS DECIMAL(6, 1)) ELSE NULL END AS delivery_minutes,
+                TRY_CAST(delivery_minutes AS DECIMAL(6, 1)) AS delivery_minutes,
                 _loaded_at,
                 _source_file,
                 _run_id,
-                ROUND(CAST(quantity AS INTEGER) * CAST(unit_price AS DECIMAL(10, 2)) * (1.0 - CAST(discount_pct AS DECIMAL(5, 2)) / 100.0), 2) AS expected_amount,
+                ROUND(TRY_CAST(quantity AS INTEGER) * TRY_CAST(unit_price AS DECIMAL(10, 2)) * (1.0 - TRY_CAST(discount_pct AS DECIMAL(5, 2)) / 100.0), 2) AS expected_amount,
                 'PASSED' AS dq_status,
-                CASE WHEN UPPER(TRIM(order_status)) = 'DELIVERED' THEN CAST(order_amount AS DECIMAL(10, 2)) ELSE 0.0 END AS net_revenue,
-                CASE WHEN UPPER(TRIM(order_status)) = 'DELIVERED' AND CAST(delivery_minutes AS DECIMAL(6, 1)) <= 15.0 THEN TRUE ELSE FALSE END AS within_15_min
+                CASE WHEN UPPER(TRIM(order_status)) = 'DELIVERED' THEN TRY_CAST(order_amount AS DECIMAL(10, 2)) ELSE 0.0 END AS net_revenue,
+                CASE WHEN UPPER(TRIM(order_status)) = 'DELIVERED' AND TRY_CAST(delivery_minutes AS DECIMAL(6, 1)) <= 15.0 THEN TRUE ELSE FALSE END AS within_15_min
             FROM df_inc;
             """
             con.execute(merge_sql)

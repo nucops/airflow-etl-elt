@@ -4,22 +4,19 @@ CREATE OR REPLACE TABLE stg_orders AS
 WITH typed_orders AS (
     SELECT
         TRIM(order_id) AS order_id,
-        CAST(order_ts AS TIMESTAMP) AS order_ts,
-        CAST(STRFTIME(CAST(order_ts AS TIMESTAMP), '%Y-%m-%d') AS DATE) AS order_date,
+        TRY_CAST(order_ts AS TIMESTAMP) AS order_ts,
+        CAST(STRFTIME(TRY_CAST(order_ts AS TIMESTAMP), '%Y-%m-%d') AS DATE) AS order_date,
         TRIM(customer_id) AS customer_id,
         TRIM(store_id) AS store_id,
         TRIM(product_id) AS product_id,
-        CAST(quantity AS INTEGER) AS quantity,
-        CAST(unit_price AS DECIMAL(10, 2)) AS unit_price,
-        CAST(discount_pct AS DECIMAL(5, 2)) AS discount_pct,
-        CAST(order_amount AS DECIMAL(10, 2)) AS order_amount,
+        TRY_CAST(quantity AS INTEGER) AS quantity,
+        TRY_CAST(unit_price AS DECIMAL(10, 2)) AS unit_price,
+        TRY_CAST(discount_pct AS DECIMAL(5, 2)) AS discount_pct,
+        TRY_CAST(order_amount AS DECIMAL(10, 2)) AS order_amount,
         UPPER(TRIM(payment_mode)) AS payment_mode,
         UPPER(TRIM(order_status)) AS order_status,
         TRIM(channel) AS channel,
-        CASE
-            WHEN delivery_minutes IS NOT NULL AND TRIM(delivery_minutes) != '' THEN CAST(delivery_minutes AS DECIMAL(6, 1))
-            ELSE NULL
-        END AS delivery_minutes,
+        TRY_CAST(delivery_minutes AS DECIMAL(6, 1)) AS delivery_minutes,
         _loaded_at,
         _source_file,
         _run_id
@@ -30,7 +27,8 @@ validated_orders AS (
         o.*,
         ROUND(o.quantity * o.unit_price * (1.0 - o.discount_pct / 100.0), 2) AS expected_amount,
         CASE
-            WHEN o.quantity <= 0 THEN 'FLAGGED: Quantity <= 0'
+            WHEN o.order_ts IS NULL THEN 'FLAGGED: Invalid timestamp'
+            WHEN o.quantity IS NULL OR o.quantity <= 0 THEN 'FLAGGED: Quantity <= 0'
             WHEN o.order_status = 'DELIVERED' AND (o.delivery_minutes IS NULL OR o.delivery_minutes < 8 OR o.delivery_minutes > 120) THEN 'FLAGGED: Delivery minutes out of SLA [8, 120]'
             WHEN ABS(o.order_amount - ROUND(o.quantity * o.unit_price * (1.0 - o.discount_pct / 100.0), 2)) > 0.05 THEN 'FLAGGED: Formula calculation mismatch'
             WHEN o.order_ts > TIMESTAMP '2026-10-02 00:00:00' THEN 'FLAGGED: Future order timestamp'

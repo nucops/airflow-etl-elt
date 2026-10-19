@@ -5,9 +5,9 @@ WITH typed_payments AS (
     SELECT
         TRIM(payment_id) AS payment_id,
         TRIM(order_id) AS order_id,
-        CAST(payment_ts AS TIMESTAMP) AS payment_ts,
+        TRY_CAST(payment_ts AS TIMESTAMP) AS payment_ts,
         UPPER(TRIM(payment_mode)) AS payment_mode,
-        CAST(amount_paid AS DECIMAL(10, 2)) AS amount_paid,
+        TRY_CAST(amount_paid AS DECIMAL(10, 2)) AS amount_paid,
         UPPER(TRIM(payment_status)) AS payment_status,
         TRIM(gateway_ref) AS gateway_ref,
         _loaded_at,

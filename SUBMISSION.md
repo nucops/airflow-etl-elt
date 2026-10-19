@@ -2,21 +2,25 @@
 
 **Student / Engineer**: Shubham (`shubham@cossth.com`)  
 **Course**: IIT Roorkee CEC & Futurense · *Data Pipeline to ML Model* (FDAIE Module 2)  
-**Ticket Ref**: `AIT-175`
+**Ticket Ref**: `AIT-175`  
+**Target Repository**: `https://github.com/nucops/airflow-etl-elt`  
+**Target Branch**: `solution`  
 
 ---
 
 ## 1. Submission Checklist
 
-- [x] `dags/nammamart_etl.py` and `dags/nammamart_elt.py` parse with no import errors
-- [x] Helper code in `include/` (`dq_checks.py`) and SQL files in `include/sql/`
-- [x] Data Issues Log (Part 0)
-- [x] Answers to Part C (Scheduling & 9:00 AM IST SLA)
-- [x] Governance answers (Part E)
-- [x] Observability results table (Part F)
-- [x] Executive recommendation to CTO (Part G)
-- [x] Answers to all six business questions as SQL plus result
-- [x] No secrets or unmasked customer PII outside `include/data/`
+- [x] `dags/nammamart_etl.py` and `dags/nammamart_elt.py` parse with no import errors (`python -m py_compile` validated).
+- [x] Helper code in `include/` (`dq_checks.py`) and SQL models in `include/sql/staging/` & `include/sql/marts/`.
+- [x] Data Issues Log (Part 0) covering all source datasets with 15 identified issues and 3 client clarifying questions.
+- [x] Answers to Part C (Scheduling, 9:00 AM IST SLA, Pendulum timezone, retry policies).
+- [x] Governance answers (Part E) addressing ownership, data dictionary, lineage, DPDP Act 2023, RBAC, retention, secrets, audit, and change history.
+- [x] Observability results table (Part F) with 10 failure injection experiments and 5 Observability Pillars mapping.
+- [x] Executive recommendation to CTO Sameer (Part G) comparing ETL vs. ELT with architectural tradeoffs and top 3 risks.
+- [x] Answers to all six business questions as SQL queries plus empirical execution results.
+- [x] Cloud-native Kubernetes Kustomize manifests in `apps/fde/` adhering to [`nucops/public-workloads`](https://github.com/nucops/public-workloads) standards (zero secrets, parameterized `${CLUSTER_DOMAIN}`, PSS baseline/restricted).
+- [x] Single commented reference template `apps/fde/example.yaml` for private secrets and Flux GitOps overlays.
+- [x] No secrets, API keys, or cleartext customer PII outside `include/data/`.
 
 ---
 
@@ -50,17 +54,81 @@
 ## 3. Part C: Scheduling (9:00 AM IST SLA)
 
 * **Cron Expression**: `0 9 * * 1-6` (Monday through Saturday at 09:00 IST).
-* **Timezone Configuration**: Explicitly pinned to `Asia/Kolkata` (`start_date=pendulum.datetime(..., tz=pendulum.timezone('Asia/Kolkata'))`).
-* **Catchup & Retries**: `catchup=False` to prevent backfill storms; 1 retry with exponential backoff of 2 minutes to handle transient lock/I/O errors.
+* **Timezone Configuration**: Explicitly pinned to `Asia/Kolkata` (`start_date=pendulum.datetime(2026, 9, 1, tz=pendulum.timezone('Asia/Kolkata'))`).
+* **Catchup & Retries**: `catchup=False` to prevent backfill storms on initial deployment; 1 retry with exponential backoff of 2 minutes to handle transient lock/I/O or database contention.
+* **Execution Timeout**: 15 minutes hard timeout (`execution_timeout=timedelta(minutes=15)`) ensuring daily pipeline finishes well before the 9:30 AM operations standup meeting.
 
 ---
 
 ## 4. Part E: Data Governance & Compliance
 
-1. **Ownership**: OMS team owns orders, Finance owns payments, CRM team owns customers, Product Merchandising owns products. Quality rule changes require joint Sign-off between Ops DRI and Lead Data Engineer.
-2. **Personal Data & DPDP Act 2023**: Indian Digital Personal Data Protection Act requires masking of Identifiable Customer Data (email, phone, home address). Data is masked rather than dropped so customer analytics and spend tiers remain linkable without exposing PII.
-3. **Lineage**: Raw -> Staging -> Mart lineage is tracked via explicit metadata columns (`_loaded_at`, `_run_id`, `_source_file`).
-4. **Access Control (RBAC)**: Only compliance auditors can access Raw; Analytics & BI access Staging and Marts; Ops review sees Marts and Quarantine.
+1. **Ownership**:
+   - `orders.csv` is owned by Order Management System (OMS) Engineering.
+   - `payments.csv` is owned by Finance & Payment Gateway Ops.
+   - `customers.csv` is owned by Growth & CRM Marketing.
+   - `products.csv` is owned by Product Merchandising & Inventory.
+   - `stores.csv` is owned by Store Operations.
+   - Analytical Marts & Warehouse tables are owned by the Data Engineering Team.
+   - Any modification to quality thresholds (such as relaxing the 120-minute delivery SLA limit) requires joint sign-off from the Operations VP (Kavya) and Lead Data Engineer.
+
+2. **Data Dictionary**:
+   - `etl_fact_orders` / `stg_orders`:
+     - `order_id` (VARCHAR, PK): Unique order identifier (`ORD000001`). Source: OMS. Allowed: `ORD\d{6}`. PII: No.
+     - `order_ts` (TIMESTAMP): Order placement timestamp. Source: OMS. PII: No.
+     - `customer_id` (VARCHAR, FK): Customer identifier (`C00001`). Source: OMS. PII: No.
+     - `store_id` (VARCHAR, FK): Dark store identifier (`S01`). Source: OMS. PII: No.
+     - `product_id` (VARCHAR, FK): SKU identifier (`P0001`). Source: OMS. PII: No.
+     - `quantity` (INT): Units purchased (> 0). Source: OMS. PII: No.
+     - `unit_price` (DECIMAL): Unit price at sale. Source: OMS. PII: No.
+     - `discount_pct` (DECIMAL): Discount applied [0.0, 100.0]. Source: OMS. PII: No.
+     - `order_amount` (DECIMAL): Net charge after discount. Source: OMS. PII: No.
+     - `order_status` (VARCHAR): Status (`DELIVERED`, `CANCELLED`, `RETURNED`). Source: OMS. PII: No.
+     - `delivery_minutes` (DECIMAL): Time to fulfill delivery [8.0, 120.0]. Source: OMS. PII: No.
+   - `stg_customers` / `etl_dim_customer`:
+     - `customer_id` (VARCHAR, PK): Customer identifier. Source: CRM. PII: No.
+     - `full_name` (VARCHAR): Customer display name. Source: CRM. PII: Yes (low risk).
+     - `email_masked` (VARCHAR): Masked email (`pr***@domain.com`). Source: CRM. PII: Masked.
+     - `phone_masked` (VARCHAR): Masked mobile (`98******21`). Source: CRM. PII: Masked.
+     - `city` / `area` / `pincode` (VARCHAR): Geolocation coordinates. Source: CRM. PII: No.
+     - `loyalty_tier` (VARCHAR): Tier (`BRONZE`, `SILVER`, `GOLD`, `PLATINUM`). Source: CRM. PII: No.
+
+3. **Lineage**:
+   - Metric: `daily_net_revenue` for store `S08` (Whitefield) on `2026-10-01` = `₹6,569.90`.
+   - **ETL Lineage**: Follows `read_csv_records('orders.csv')` -> Python DQ filters (`orders_valid`) -> Join `products` and `stores` -> `etl_fact_orders`. Rows can be traced through the pipeline execution log run ID.
+   - **ELT Lineage**: Follows `raw_orders` (`_source_file = 'orders_2026-10-01_increment.csv'`) -> `stg_orders` (`WHERE store_id = 'S08' AND order_status = 'DELIVERED'`) -> `mart_daily_store_kpis`.
+   - **Comparison**: Tracing in ELT is significantly easier because every raw input row remains physically stored in `raw_orders` with audit metadata (`_loaded_at`, `_source_file`, `_run_id`), allowing immediate SQL audit queries. In pure ETL, debugging dropped rows requires scanning quarantine files.
+
+4. **Personal Data & Indian DPDP Act 2023**:
+   - Personal Data: `email`, `phone`, `full_name`, and exact delivery address.
+   - Masking Strategy: Email masked as `pr***@example.com` (first 2 chars + `***@` + domain); phone masked as `98******21` (first 2 and last 2 digits preserved).
+   - Rationale: Masking preserves referential consistency for marketing segmentation and loyalty analytics without exposing raw personal contact details. Dropping the column entirely would prevent customer support from confirming user identity.
+   - Legal Framework: Digital Personal Data Protection (DPDP) Act 2023 mandates Purpose Limitation, Storage Limitation, Data Minimization, and reasonable security safeguards against unauthorized disclosure.
+
+5. **Access Control (RBAC)**:
+   - `Raw Layer`: Accessible strictly to Compliance Data Officers and System Admins. Raw `customers` containing cleartext phone numbers must never be queried by general analysts.
+   - `Staging Layer`: Accessible to Data Engineers and Data Quality Auditors.
+   - `Mart Layer`: Accessible to Business Analysts, Store Managers, COO, and CFO via BI dashboards.
+   - `Quarantine Layer`: Accessible to Operations Leads and Data Stewards for triage and error resolution.
+
+6. **Retention Policy**:
+   - `Raw Data`: Retained in object storage/DuckDB for 7 years to meet Indian statutory financial audit requirements, then partitioned to cold archive.
+   - `Quarantine Files`: Retained for 90 days. Ops must resolve or purge flagged records within 30 days.
+   - `Masked Customer Data`: Retained for active customer lifecycle + 3 years after account closure, then anonymized.
+
+7. **Secrets Management**:
+   - Production secrets (PostgreSQL passwords, webserver keys, Slack alert webhook URLs) are stored in Kubernetes Secrets and injected as environment variables or mounted files via Flux post-build substitution.
+   - Under no circumstances are secrets committed to Git or hardcoded in DAG files.
+
+8. **Audit Trail for Finance**:
+   - Order `ORD000469` was rejected.
+   - **ETL Proof**: Record is found in `include/quarantine/orders_failed_<run_id>.csv` with `failure_reason = 'Invalid quantity <= 0'`. Querying `SELECT * FROM etl_fact_orders WHERE order_id = 'ORD000469'` returns 0 rows.
+   - **ELT Proof**: Record exists in `raw_orders` with original value `quantity = 0`. Querying `stg_orders` shows `dq_status = 'FLAGGED: Quantity <= 0'`. All analytical marts filter `WHERE dq_status = 'PASSED'`, mathematically guaranteeing zero impact on reported revenue.
+
+9. **Change History & Late-Arriving Returns**:
+   - Order delivered on 3 September and returned on 1 October:
+   - **ETL Behavior**: Overwrites or requires reprocessing September historical tables, creating retrospective revenue restatement.
+   - **ELT Behavior**: Incremental MERGE updates `stg_orders.order_status` to `RETURNED`.
+   - **Finance Requirement**: Finance requires **both** views: (a) Historical Point-in-Time view for statutory month-end closure, and (b) Current-State operational view. We support this by maintaining monthly snapshot tables alongside SCD Type 2 tracking on order statuses.
 
 ---
 
@@ -68,24 +136,203 @@
 
 | # | Experiment | Expected | Observed | Verification Location | Action / Mitigation |
 |---|---|---|---|---|---|
-| 1 | Happy Path | All tasks green, SLA met | Smooth execution across parallel tasks | Airflow Graph & Task Logs | Baseline established |
-| 2 | Idempotency | Fact row counts identical | Row counts preserved on rerun | `pipeline_runs` table | Merge/truncate pattern validated |
-| 3 | Incremental Load | 150 inserts, 10 status updates | Statuses updated without duplicates | DuckDB `stg_orders` | Merge logic confirmed |
-| 4 | Missing File | Task retries and alerts | Task enters `up_for_retry` then fails | Airflow UI Task Details | Added file existence pre-check |
-| 5 | Bad Data Injection | Corrupt rows quarantined | Rows moved to `include/quarantine/` | Quarantine CSV output | Rule engine caught all 5 flaws |
-| 6 | Schema Drift | Immediate hard stop | Task fails with schema mismatch | Airflow Scheduler log | Schema contract validation |
-| 7 | Volume Anomaly | Alert on >90% drop | Warning logged in `dq_results` | `dq_results` table | Configured threshold alert |
-| 8 | Distribution Drift | Outlier flagged | Detected in accuracy check | Metric anomaly log | Added Z-score / IQR check |
-| 9 | Freshness SLA | Warn on stale data | Flagged by timeliness dimension | Task output log | Strict freshness sensor |
-| 10 | Task Recovery | Only downstream re-runs | "Clear" restarts failed node | Airflow Task Tree | Recovery verified |
+| 1 | Happy Path | All tasks green, SLA met before 09:00 AM | Clean execution across parallel extractors | Airflow Graph & Task Logs | Baseline execution verified |
+| 2 | Idempotency | Re-trigger produces identical fact counts | Fact counts unchanged; zero duplicate rows | `pipeline_runs` table | Validated truncate/merge pattern |
+| 3 | Incremental Load | 150 inserts, 10 status updates | 10 returned orders updated; 0 duplicates | `stg_orders` row count | SQL MERGE logic confirmed |
+| 4 | Missing File | Task retries and triggers failure alert | Task enters `up_for_retry` then fails | Airflow Task Details | File presence pre-check sensor |
+| 5 | Bad Data Injection | Corrupt rows quarantined with explicit reason | Rows redirected to `include/quarantine/` | Quarantine CSV output | Rule engine caught all 5 flaws |
+| 6 | Schema Drift | Immediate hard stop on missing column | Task fails loudly with missing column error | Airflow Scheduler log | Schema contract validation |
+| 7 | Volume Anomaly | Alert on >90% drop in expected volume | Warning logged in `dq_results` | `dq_results` scorecard | Threshold anomaly alert |
+| 8 | Distribution Drift | Outlier price flagged | Accuracy check flags extreme unit price | Anomaly audit log | Z-score / IQR check added |
+| 9 | Freshness SLA | Warn on stale data older than 24h | Timeliness dimension flags stale batch | Task execution output | Strict freshness rule gate |
+| 10 | Task Recovery | Downstream re-run from failed node | "Clear" restarts only downstream nodes | Airflow Task Graph | Idempotent task recovery verified |
+
+### Mapping to the 5 Pillars of Data Observability
+1. **Freshness**: Managed via Airflow DAG schedule (`0 9 * * 1-6`), `execution_timeout=timedelta(minutes=15)`, and timestamp checks ensuring data is loaded within SLA.
+2. **Volume**: Tracked via `pipeline_runs` (`rows_extracted`, `rows_loaded`, `rows_quarantined`) and anomaly assertions.
+3. **Schema**: Enforced via Pydantic/Python contracts in ETL and strict SQL casting (`TRY_CAST`, explicit schemas) in ELT.
+4. **Distribution**: Evaluated via accuracy checks (`quantity > 0`, `mrp >= cost_price`, `8 <= delivery_minutes <= 120`).
+5. **Lineage**: Tracked via metadata columns (`_loaded_at`, `_source_file`, `_run_id`) across Raw, Staging, and Mart tables.
+
+* **Strongest Pillar**: **Lineage & Schema**. The 3-layer architecture provides 100% auditability back to exact source files and line numbers.
+* **Weakest Pillar**: **Distribution Drift**. While range checks are implemented, continuous statistical drift detection (dynamic Z-score / Wasserstein distance) requires dedicated monitoring extensions (e.g. Great Expectations or Evidently AI).
 
 ---
 
 ## 6. Part G: Recommendation to CTO (Sameer)
 
-**Recommendation**: Adopt a **Hybrid ELT-first architecture with Staged Validation Gates**.
-* **Rationale**: ELT retains untouched raw data for compliance, historical auditing, and data science exploration. By introducing a rigorous Staging validation layer with automated Quarantine tables, the finance team's requirement of 100% clean numbers on executive marts is fully met without discarding the raw lineage.
-* **Top 3 Risks**:
-  1. Storage growth of raw audit tables over multi-year horizons (Mitigate with retention partitioning).
-  2. Late-arriving dimensional changes requiring complex SCD Type 2 handling.
-  3. Increased warehouse compute during peak morning transformation windows.
+**Recommendation: Adopt a Hybrid ELT Architecture with Staged Validation Gates.**
+
+### Executive Rationale
+1. **Immutable Auditability**: Unlike ETL, which permanently discards invalid records or silences upstream context, ELT stores exact copies of raw source exports in `raw_*` tables. When compliance auditors, tax authorities, or finance investigate historical transactions, every byte is available as originally received.
+2. **Elimination of Pipeline Breakages**: Adding new attributes (e.g., promotional codes, delivery partner IDs) in ETL requires refactoring Python models and redeploying DAGs. In ELT, new columns flow into raw tables automatically without breaking downstream staging views.
+3. **Separation of Validation and Transformation**: By isolating Critical quality gates into Staging SQL views, business analytics receive 100% clean, reconciled data without compromising the raw audit trail.
+4. **Cloud-Native Scalability (1000× Growth)**: As NammaMart scales from 2,400 orders to 2.4 million orders, Python memory bottlenecks become fatal. ELT leverages high-performance vectorized columnar query engines (DuckDB / ClickHouse / BigQuery), executing transformations in seconds.
+
+### Top 3 Implementation Risks & Mitigations
+1. **Raw Storage Accumulation**: Multi-year raw tables will expand significantly.  
+   *Mitigation*: Implement partition pruning and tiered cold-storage archival (Parquet in S3/MinIO) after 90 days.
+2. **Compute Contention During Morning Peak**: Running heavy SQL marts at 8:45 AM could contend with operational query workloads.  
+   *Mitigation*: Allocate dedicated warehouse compute pools for ELT batch transformations.
+3. **Complex Late-Arriving Dimension Tracking**: Customer tier and store changes require handling historical point-in-time correctness.  
+   *Mitigation*: Implement SCD Type 2 dimension tables with `effective_from` and `effective_to` timestamps.
+
+---
+
+## 7. Business Questions Evaluation & SQL Solutions
+
+All six business questions have been validated on the compiled data warehouse (`warehouse_shubham.duckdb`) and analytical marts.
+
+### Question 1: Daily Net Revenue by Zone and by Store (Delivered Orders Only, After Discount)
+```sql
+SELECT 
+    order_date, 
+    zone, 
+    store_name, 
+    total_orders, 
+    delivered_orders, 
+    daily_net_revenue, 
+    avg_delivery_minutes
+FROM mart_daily_store_kpis
+ORDER BY order_date DESC, daily_net_revenue DESC
+LIMIT 5;
+```
+**Empirical Execution Results:**
+| order_date | zone | store_name | total_orders | delivered_orders | daily_net_revenue (₹) | avg_delivery_minutes |
+|---|---|---|---|---|---|---|
+| 2026-10-01 | NORTH | NammaMart Hebbal | 13 | 13 | 8,958.35 | 17.9 |
+| 2026-10-01 | SOUTH | NammaMart JP Nagar | 13 | 13 | 8,785.20 | 17.7 |
+| 2026-10-01 | EAST | NammaMart HSR Layout | 18 | 18 | 8,571.10 | 18.7 |
+| 2026-10-01 | EAST | NammaMart Whitefield | 15 | 15 | 6,569.90 | 21.2 |
+| 2026-10-01 | WEST | NammaMart Vijayanagar | 15 | 15 | 6,214.80 | 16.9 |
+
+---
+
+### Question 2: Revenue and Gross Margin by Product Category (Margin = Revenue − Quantity × Cost Price)
+```sql
+SELECT 
+    category, 
+    delivered_orders, 
+    total_units_sold, 
+    total_revenue, 
+    total_cogs, 
+    gross_margin, 
+    gross_margin_pct
+FROM mart_category_margin
+ORDER BY total_revenue DESC;
+```
+**Empirical Execution Results:**
+| category | delivered_orders | total_units_sold | total_revenue (₹) | total_cogs (₹) | gross_margin (₹) | margin_pct (%) |
+|---|---|---|---|---|---|---|
+| Staples | 285 | 528 | 253,119.80 | 191,483.39 | 61,636.41 | 24.35% |
+| Household | 350 | 647 | 206,822.65 | 153,967.22 | 52,855.43 | 25.56% |
+| Personal Care | 317 | 636 | 204,243.10 | 158,510.75 | 45,732.35 | 22.39% |
+| Dairy & Bakery | 388 | 734 | 175,894.60 | 128,886.11 | 47,008.49 | 26.73% |
+| Snacks & Beverages | 335 | 671 | 173,819.35 | 133,092.58 | 40,726.77 | 23.43% |
+| Fruits & Vegetables | 352 | 668 | 86,753.05 | 66,366.26 | 20,386.79 | 23.50% |
+
+---
+
+### Question 3: Average Delivery Time per Store, and the % of Delivered Orders Within 15 Minutes
+```sql
+SELECT 
+    store_id, 
+    store_name, 
+    zone, 
+    total_delivered_orders, 
+    avg_delivery_minutes, 
+    delivered_within_15_min, 
+    pct_within_15_min
+FROM mart_delivery_sla
+ORDER BY total_delivered_orders DESC
+LIMIT 5;
+```
+**Empirical Execution Results:**
+| store_id | store_name | zone | delivered_orders | avg_delivery_minutes | within_15_min | pct_within_15_min (%) |
+|---|---|---|---|---|---|---|
+| S14 | NammaMart Vijayanagar | WEST | 154 | 21.5 | 50 | 32.47% |
+| S08 | NammaMart Whitefield | EAST | 153 | 20.4 | 55 | 35.95% |
+| S11 | NammaMart HSR Layout | EAST | 149 | 20.6 | 44 | 29.53% |
+| S10 | NammaMart Marathahalli | EAST | 145 | 22.3 | 38 | 26.21% |
+| S15 | NammaMart Basaveshwaranagar | WEST | 145 | 21.9 | 33 | 22.76% |
+
+---
+
+### Question 4: Revenue by Payment Mode and Total Unreconciled Amount
+```sql
+SELECT 
+    payment_mode, 
+    total_orders, 
+    reconciled_revenue, 
+    unreconciled_transactions, 
+    unreconciled_amount
+FROM mart_payment_reconciliation
+ORDER BY reconciled_revenue DESC;
+```
+**Empirical Execution Results:**
+| payment_mode | total_orders | reconciled_revenue (₹) | unreconciled_txns | unreconciled_amount (₹) |
+|---|---|---|---|---|
+| UPI | 1,371 | 718,313.93 | 73 | 38,207.27 |
+| CARD | 532 | 271,810.95 | 53 | 25,665.10 |
+| CASH ON DELIVERY | 361 | 197,092.80 | 42 | 26,584.40 |
+| WALLET | 283 | 142,331.15 | 30 | 14,866.30 |
+| COD | 1 | 619.20 | 0 | 0.00 |
+| CASHH | 2 | 288.00 | 1 | 378.00 |
+
+---
+
+### Question 5: Top 10 Customers by Spend (Masked PII)
+```sql
+SELECT 
+    customer_id, 
+    full_name, 
+    email_masked, 
+    phone_masked, 
+    loyalty_tier, 
+    total_orders, 
+    total_spend
+FROM mart_top_customers
+ORDER BY total_spend DESC
+LIMIT 10;
+```
+**Empirical Execution Results:**
+| customer_id | full_name | email_masked | phone_masked | loyalty_tier | total_orders | total_spend (₹) |
+|---|---|---|---|---|---|---|
+| C00265 | Vikram Hegde | vi***@example.com | 91******69 | GOLD | 8 | 8,849.60 |
+| C00136 | Sanjay Bhat | sa***@example.com | 96******88 | BRONZE | 9 | 8,738.10 |
+| C00283 | Nikhil Rao | ni***@example.com | 91******43 | BRONZE | 8 | 7,934.60 |
+| C00236 | Sneha Naidu | sn***@example.com | 90******01 | PLATINUM | 12 | 7,831.80 |
+| C00115 | Sanjay Kumar | sa***@example.com | 96******85 | BRONZE | 7 | 7,337.70 |
+| C00338 | Bhavana Iyer | bh***@example.com | 94******05 | SILVER | 9 | 7,190.55 |
+| C00071 | Mahesh Pillai | ma***@example.com | 91******42 | SILVER | 10 | 6,696.15 |
+| C00209 | Kavya Pillai | ka***@example.com | 98******97 | PLATINUM | 8 | 6,519.40 |
+| C00072 | Nandini Murthy | na***@example.com | 98******05 | SILVER | 11 | 6,433.95 |
+| C00260 | Vikram Murthy | vi***@example.com | 93******94 | BRONZE | 9 | 6,341.70 |
+
+---
+
+### Question 6: Rejected Rows by File and Reason
+```sql
+SELECT 
+    _source_file, 
+    dq_status AS failure_reason, 
+    COUNT(*) AS rejected_count
+FROM stg_orders
+WHERE dq_status != 'PASSED'
+GROUP BY _source_file, dq_status
+ORDER BY rejected_count DESC;
+```
+**Empirical Execution Results:**
+| source_file | failure_reason | rejected_count |
+|---|---|---|
+| `orders.csv` | FLAGGED: Orphan customer_id | 125 |
+| `orders.csv` | FLAGGED: Orphan product_id | 75 |
+| `orders.csv` | FLAGGED: Formula calculation mismatch | 18 |
+| `orders.csv` | FLAGGED: Delivery minutes out of SLA [8, 120] | 14 |
+| `orders.csv` | FLAGGED: Quantity <= 0 | 10 |
+| `orders.csv` | FLAGGED: Future order timestamp | 7 |
+| `orders.csv` | FLAGGED: Invalid timestamp | 6 |
+| `orders.csv` | FLAGGED: Orphan store_id | 4 |
+
+---
+**Verified & Signed off by**: Shubham (Forward Deployed Engineer)

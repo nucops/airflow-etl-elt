@@ -8,14 +8,14 @@ WITH deduplicated AS (
         TRIM(email) AS email_raw,
         -- Mask email: pr***@example.com
         SUBSTRING(TRIM(email), 1, 2) || '***@' || SPLIT_PART(TRIM(email), '@', 2) AS email_masked,
-        TRIM(phone) AS phone_raw,
+        TRIM(CAST(phone AS VARCHAR)) AS phone_raw,
         -- Mask phone: 98******21
-        SUBSTRING(REGEXP_REPLACE(TRIM(phone), '[^0-9]', ''), 1, 2) || '******' || SUBSTRING(REGEXP_REPLACE(TRIM(phone), '[^0-9]', ''), -2) AS phone_masked,
+        SUBSTRING(REGEXP_REPLACE(TRIM(CAST(phone AS VARCHAR)), '[^0-9]', ''), 1, 2) || '******' || SUBSTRING(REGEXP_REPLACE(TRIM(CAST(phone AS VARCHAR)), '[^0-9]', ''), -2) AS phone_masked,
         TRIM(city) AS city,
         TRIM(area) AS area,
-        TRIM(pincode) AS pincode,
+        TRIM(CAST(pincode AS VARCHAR)) AS pincode,
         CAST(signup_date AS DATE) AS signup_date,
-        INITCAP(TRIM(loyalty_tier)) AS loyalty_tier,
+        UPPER(TRIM(loyalty_tier)) AS loyalty_tier,
         CAST(is_active AS BOOLEAN) AS is_active,
         _loaded_at,
         _source_file,

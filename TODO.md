@@ -123,46 +123,46 @@ fdeM2/
 ---
 
 ### Phase 4: Production ELT Pipeline in Kubernetes (Part B)
-- [ ] **DAG Architecture (`dags/nammamart_elt.py`)**:
+- [x] **DAG Architecture (`dags/nammamart_elt.py`)**:
   - Scheduled at `0 9 * * 1-6` (09:00 IST Monday-Saturday).
-- [ ] **Layer 1: Raw Ingestion**:
+- [x] **Layer 1: Raw Ingestion**:
   - Unmodified ingestion into DuckDB tables: `raw_orders`, `raw_payments`, `raw_customers`, `raw_products`, `raw_stores`.
   - Add metadata columns: `_loaded_at`, `_source_file`, `_run_id`.
-- [ ] **Layer 2: Staging SQL Models (`include/sql/staging/`)**:
+- [x] **Layer 2: Staging SQL Models (`include/sql/staging/`)**:
   - SQL-driven type casting, deduplication, PII masking, and DQ flagging (`dq_status`, `failure_reason`).
   - Tables: `stg_orders`, `stg_payments`, `stg_customers`, `stg_products`, `stg_stores`.
-- [ ] **Incremental Upsert / MERGE**:
+- [x] **Incremental Upsert / MERGE**:
   - Process `orders_2026-10-01_increment.csv`.
   - Raw: Append rows.
   - Staging: SQL `MERGE` on `order_id` updating returned statuses and appending new orders without duplicates.
-- [ ] **Layer 3: Analytical Data Marts (`include/sql/marts/`)**:
+- [x] **Layer 3: Analytical Data Marts (`include/sql/marts/`)**:
   - `mart_daily_store_kpis`, `mart_category_margin`, `mart_delivery_sla`, `mart_payment_reconciliation`, `mart_top_customers`.
-- [ ] **ETL vs. ELT September Parity Verification**:
+- [x] **ETL vs. ELT September Parity Verification**:
   - Confirm Mart totals match ETL Fact numbers exactly.
 
 ---
 
 ### Phase 5: Data Quality Dimensions & Governance (Parts D & E)
-- [ ] **All 6 Data Quality Dimensions**:
+- [x] **All 6 Data Quality Dimensions**:
   - Completeness, Uniqueness, Validity, Accuracy, Consistency, Timeliness.
   - Implemented in Python (ETL) and SQL (ELT).
-- [ ] **Quality Scorecard Table (`dq_results`)**:
+- [x] **Quality Scorecard Table (`dq_results`)**:
   - Persistent tracking: `run_id`, `dag_id`, `check_name`, `dimension`, `severity`, `rows_checked`, `rows_failed`, `status`, `checked_at`.
-- [ ] **Governance Answers in `SUBMISSION.md`**:
+- [x] **Governance Answers in `SUBMISSION.md`**:
   - Ownership, Data Dictionary, Lineage demonstration, DPDP Act 2023 compliance, RBAC, Retention, Secrets management.
 
 ---
 
 ### Phase 6: Observability Suite & Client Recommendation (Parts F & G)
-- [ ] **Run Audit Table (`pipeline_runs`)**:
+- [x] **Run Audit Table (`pipeline_runs`)**:
   - Final task with `trigger_rule="all_done"` recording run metrics and duration.
-- [ ] **10 Observability Experiments**:
+- [x] **10 Observability Experiments**:
   - Record results for Happy path, Idempotency, Incremental load, Missing file, Bad data, Schema drift, Volume anomaly, Distribution drift, Freshness, and Recovery.
-- [ ] **5 Observability Pillars Mapping**:
+- [x] **5 Observability Pillars Mapping**:
   - Analyze Freshness, Volume, Schema, Distribution, Lineage.
-- [ ] **Executive Recommendation Memo**:
+- [x] **Executive Recommendation Memo**:
   - Address CTO Sameer comparing ETL vs. ELT with trade-offs, scalability, and 3 key risks.
-- [ ] **SQL Business Solutions**:
+- [x] **SQL Business Solutions**:
   - Deliver executable queries and outputs for all 6 business questions.
 
 ---
