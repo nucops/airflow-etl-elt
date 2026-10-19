@@ -99,26 +99,26 @@ fdeM2/
 ---
 
 ### Phase 3: Production ETL Pipeline in Kubernetes (Part A)
-- [ ] **DAG Architecture (`dags/nammamart_etl.py`)**:
+- [x] **DAG Architecture (`dags/nammamart_etl.py`)**:
   - Scheduled at `0 9 * * 1-6` (09:00 IST Monday-Saturday).
   - Explicit timezone: `pendulum.timezone("Asia/Kolkata")`, `catchup=False`.
-- [ ] **Task 1: Parallel Extraction**:
-  - Extract tasks for the 5 entities reading from shared storage.
-- [ ] **Task 2: Validation & Quarantine**:
+- [x] **Task 1: Parallel Extraction**:
+  - Parallel extract tasks for `orders`, `payments`, `customers`, `products`, and `stores`.
+- [x] **Task 2: Validation & Quarantine**:
   - Python quality rule engine evaluating Critical checks.
-  - Corrupt rows written to `include/quarantine/<run_id>/<file>_failed.csv` with `failure_reason`.
-- [ ] **Task 3: Transformation & PII Protection**:
+  - Corrupt rows partitioned and written to `include/quarantine/<file>_failed_<run_id>.csv` with `failure_reason` column.
+- [x] **Task 3: Transformation & PII Protection**:
   - Casing normalization and deduplication.
   - PII masking conforming to Indian DPDP Act 2023 (`pr***@example.com`, `98******21`).
   - Join orders with dimensions and compute derived fields (`net_revenue`, `gross_margin`, `within_15_min`).
-- [ ] **Task 4: DuckDB Star Schema Loading**:
+- [x] **Task 4: DuckDB Star Schema Loading**:
   - Idempotent table management in `include/warehouse.duckdb`:
     - Fact: `etl_fact_orders`
     - Dimensions: `etl_dim_customer`, `etl_dim_product`, `etl_dim_store`
-- [ ] **Task 5: Payment Gateway Reconciliation**:
+- [x] **Task 5: Payment Gateway Reconciliation**:
   - Reconcile clean orders against `payments.csv`, creating `etl_payment_reconciliation`.
-- [ ] **Task 6: Daily KPI Reporting**:
-  - Generate `etl_daily_zone_revenue` and `etl_category_margin`.
+- [x] **Task 6: Daily KPI Reporting**:
+  - Generate `etl_daily_zone_revenue` and `etl_category_margin` in executive morning standup log.
 
 ---
 
