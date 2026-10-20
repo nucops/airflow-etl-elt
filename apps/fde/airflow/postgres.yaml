@@ -8,7 +8,7 @@ spec:
   enableSuperuserAccess: true
 
   storage:
-    size: 16Gi
+    size: 32Gi
     storageClass: ${DB_SC}
   bootstrap:
     initdb:
