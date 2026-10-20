@@ -88,12 +88,23 @@ data:
           cpu: 500m
           memory: 1Gi
 
-    # -- DAG deployment via git-sync (disabled until private DAG repo is provisioned)
+    # -- Extra environment variables (auto-installs duckdb and pandas)
+    extraEnv: |
+      - name: _PIP_ADDITIONAL_REQUIREMENTS
+        value: "duckdb==1.1.3 pandas"
+
+    # -- DAG deployment via git-sync
     dags:
       persistence:
         enabled: false
       gitSync:
-        enabled: false
+        enabled: true
+        repo: https://github.com/nucops/airflow-etl-elt.git
+        branch: solution
+        rev: HEAD
+        depth: 1
+        subPath: ""
+        wait: 60
 
     # -- KubernetesExecutor pod template defaults
     workers:

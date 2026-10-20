@@ -19,7 +19,18 @@ from airflow.decorators import dag, task
 
 # Environment & Directory Setup
 LOCAL_TZ = pendulum.timezone("Asia/Kolkata")
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if os.path.exists(os.path.join(_CURRENT_DIR, "..", "include", "data", "nammamart")):
+    BASE_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, ".."))
+elif os.path.exists(os.path.join(_CURRENT_DIR, "include", "data", "nammamart")):
+    BASE_DIR = _CURRENT_DIR
+elif os.path.exists("/opt/airflow/dags/include/data/nammamart"):
+    BASE_DIR = "/opt/airflow/dags"
+elif os.path.exists("/opt/airflow/dags/repo/include/data/nammamart"):
+    BASE_DIR = "/opt/airflow/dags/repo"
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 DATA_DIR = os.path.join(BASE_DIR, "include", "data", "nammamart")
 SQL_DIR = os.path.join(BASE_DIR, "include", "sql")
 WAREHOUSE_PATH = os.path.join(BASE_DIR, "include", "warehouse.duckdb")
