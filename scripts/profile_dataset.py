@@ -122,10 +122,19 @@ def profile():
         issues.append(("products.csv", bad_mrp[:3], "cost_price", f"Cost price exceeds MRP: {len(bad_mrp)} rows", "Accuracy", "Critical"))
 
     # 5. Stores
+    missing_zone = [s["store_id"] for s in stores if not s.get("zone", "").strip()]
+    if missing_zone:
+        issues.append(("stores.csv", missing_zone[:3], "zone", f"Missing/empty zone: {len(missing_zone)} rows (e.g. S07 BTM Layout)", "Completeness", "Warning"))
+
+    zero_cap = [s["store_id"] for s in stores if int(s.get("capacity_orders_per_day", 0)) <= 0]
+    if zero_cap:
+        issues.append(("stores.csv", zero_cap[:3], "capacity_orders_per_day", f"Zero or negative daily store order capacity: {len(zero_cap)} rows (e.g. S12 Rajajinagar)", "Accuracy", "Critical"))
+
     pin_regex = re.compile(r"^[1-9][0-9]{5}$")
     bad_pin = [s["store_id"] for s in stores if not pin_regex.match(s["pincode"].strip())]
     if bad_pin:
         issues.append(("stores.csv", bad_pin[:3], "pincode", f"Invalid 6-digit Indian PIN code: {len(bad_pin)} rows", "Validity", "Warning"))
+
 
     # 6. Increment
     old_status = {o["order_id"]: o["order_status"] for o in orders}

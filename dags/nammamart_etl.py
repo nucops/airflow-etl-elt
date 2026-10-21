@@ -1,6 +1,6 @@
 """NammaMart Production ETL Pipeline (Part A).
 
-Extract -> Validate -> Quarantine -> Transform -> Load (DuckDB Star Schema) -> Reconcile -> Report.
+Extract -> Validate -> Quarantine -> Transform -> Load (DuckDB Star Schema) -> Reconcile -> Audit & Scorecard.
 SLA: Ready before 9:00 AM IST Monday to Saturday.
 Course: IIT Roorkee CEC & Futurense · Data Pipeline to ML Model (FDAIE Module 2)
 """
@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import csv
 import datetime
+import json
 import os
 import re
+import urllib.request
 from datetime import timedelta
 from typing import Any
 
+import duckdb
+import pandas as pd
 import pendulum
 from airflow.decorators import dag, task
 
@@ -34,6 +38,37 @@ else:
 DATA_DIR = os.path.join(BASE_DIR, "include", "data", "nammamart")
 QUARANTINE_DIR = os.path.join(BASE_DIR, "include", "quarantine")
 WAREHOUSE_PATH = os.path.join(BASE_DIR, "include", "warehouse.duckdb")
+WAREHOUSE_SHUBHAM_PATH = os.path.join(BASE_DIR, "include", "warehouse_shubham.duckdb")
+
+
+def on_failure_alert(context: dict[str, Any]) -> None:
+    """Send failure alert to Slack webhook using Airflow Variable (Bonus requirement)."""
+    try:
+        from airflow.models import Variable
+        webhook_url = Variable.get("SLACK_WEBHOOK_URL", default_var=None)
+        if webhook_url:
+            dag_id = context.get("task_instance").dag_id if context.get("task_instance") else "nammamart_etl"
+            task_id = context.get("task_instance").task_id if context.get("task_instance") else "unknown_task"
+            run_id = context.get("run_id", "manual")
+            exception = str(context.get("exception", "Execution error"))
+            payload = {
+                "text": (
+                    f":rotating_light: *NammaMart Pipeline Failure Alert*\n"
+                    f"*DAG*: `{dag_id}` | *Task*: `{task_id}`\n"
+                    f"*Run ID*: `{run_id}`\n"
+                    f"*Error*: `{exception}`"
+                )
+            }
+            req = urllib.request.Request(
+                webhook_url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=5)
+            print("Successfully dispatched Slack failure alert.")
+    except Exception as e:
+        print(f"Notice: Slack failure alert notification could not be sent: {e}")
+
 
 default_args = {
     "owner": "airflow",
@@ -43,6 +78,7 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=2),
     "execution_timeout": timedelta(minutes=15),
+    "on_failure_callback": on_failure_alert,
 }
 
 
@@ -118,36 +154,33 @@ def write_quarantine_records(file_name: str, records: list[dict[str, Any]], run_
     tags=["nammamart", "etl", "iitr-futurense", "public-workloads"],
 )
 def nammamart_etl_pipeline():
+    start_time_iso = pendulum.now(LOCAL_TZ).to_iso8601_string()
+
     # -------------------------------------------------------------------------
     # Step 1: Parallel Extraction Tasks
     # -------------------------------------------------------------------------
     @task
     def extract_orders() -> list[dict[str, str]]:
-        records = read_csv_records("orders.csv")
-        return records
+        return read_csv_records("orders.csv")
 
     @task
     def extract_payments() -> list[dict[str, str]]:
-        records = read_csv_records("payments.csv")
-        return records
+        return read_csv_records("payments.csv")
 
     @task
     def extract_customers() -> list[dict[str, str]]:
-        records = read_csv_records("customers.csv")
-        return records
+        return read_csv_records("customers.csv")
 
     @task
     def extract_products() -> list[dict[str, str]]:
-        records = read_csv_records("products.csv")
-        return records
+        return read_csv_records("products.csv")
 
     @task
     def extract_stores() -> list[dict[str, str]]:
-        records = read_csv_records("stores.csv")
-        return records
+        return read_csv_records("stores.csv")
 
     # -------------------------------------------------------------------------
-    # Step 2: Quality Validation & Quarantine
+    # Step 2: Quality Validation & Quarantine (All 6 DQ Dimensions)
     # -------------------------------------------------------------------------
     @task
     def validate_and_quarantine(
@@ -158,16 +191,59 @@ def nammamart_etl_pipeline():
         stores_raw: list[dict[str, str]],
         **context: Any,
     ) -> dict[str, Any]:
-        run_id = context.get("run_id", f"manual_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        run_id = context.get("run_id", f"etl_run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        checked_at = pendulum.now(LOCAL_TZ).to_iso8601_string()
 
-        # Dimension primary key sets for foreign key validation
+        # Master foreign key sets
         valid_customer_ids = {c["customer_id"].strip() for c in customers_raw if c.get("customer_id")}
         valid_product_ids = {p["product_id"].strip() for p in products_raw if p.get("product_id")}
         valid_store_ids = {s["store_id"].strip() for s in stores_raw if s.get("store_id")}
 
-        # 1. Validate Products
+        dq_metrics: list[dict[str, Any]] = []
+
+        # 1. Validate Stores (Completeness & Accuracy)
+        clean_stores = []
+        failed_stores = []
+        missing_zone_count = 0
+        zero_cap_count = 0
+        for s in stores_raw:
+            reasons = []
+            zone = s.get("zone", "").strip()
+            if not zone:
+                reasons.append("Missing zone (Completeness)")
+                missing_zone_count += 1
+            try:
+                cap = int(s.get("capacity_orders_per_day", 0))
+                if cap <= 0:
+                    reasons.append(f"Store capacity must be positive, got {cap} (Accuracy)")
+                    zero_cap_count += 1
+            except (ValueError, TypeError):
+                reasons.append("Malformed capacity_orders_per_day")
+                zero_cap_count += 1
+
+            if reasons:
+                failed_s = dict(s)
+                failed_s["failure_reason"] = "; ".join(reasons)
+                failed_stores.append(failed_s)
+            else:
+                clean_stores.append(s)
+
+        write_quarantine_records("stores.csv", failed_stores, run_id)
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "stores_zone_completeness",
+            "dimension": "Completeness", "severity": "Warning", "rows_checked": len(stores_raw),
+            "rows_failed": missing_zone_count, "status": "PASSED" if missing_zone_count == 0 else "WARNING", "checked_at": checked_at
+        })
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "stores_capacity_accuracy",
+            "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(stores_raw),
+            "rows_failed": zero_cap_count, "status": "PASSED" if zero_cap_count == 0 else "FAILED", "checked_at": checked_at
+        })
+
+        # 2. Validate Products (Accuracy: MRP >= Cost Price > 0)
         clean_products = []
         failed_products = []
+        cost_mrp_failed = 0
         for p in products_raw:
             reasons = []
             try:
@@ -175,10 +251,13 @@ def nammamart_etl_pipeline():
                 mrp = float(p.get("mrp", 0))
                 if cost <= 0:
                     reasons.append("cost_price must be positive")
-                if cost > mrp:
+                    cost_mrp_failed += 1
+                elif cost > mrp:
                     reasons.append(f"cost_price {cost} exceeds MRP {mrp}")
+                    cost_mrp_failed += 1
             except (ValueError, TypeError):
                 reasons.append("Invalid numeric format in cost_price or mrp")
+                cost_mrp_failed += 1
 
             if reasons:
                 failed_p = dict(p)
@@ -188,20 +267,36 @@ def nammamart_etl_pipeline():
                 clean_products.append(p)
 
         write_quarantine_records("products.csv", failed_products, run_id)
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "products_cost_vs_mrp",
+            "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(products_raw),
+            "rows_failed": cost_mrp_failed, "status": "PASSED" if cost_mrp_failed == 0 else "FAILED", "checked_at": checked_at
+        })
 
-        # 2. Validate Customers (Deduplicate & check required)
+        # 3. Validate Customers (Uniqueness, Validity: Email/Phone regex, PII)
         seen_cust = set()
         clean_customers = []
         failed_customers = []
+        email_regex = re.compile(r"^[\w\.-]+@[\w\.-]+\.\w+$")
+        invalid_email_count = 0
+        invalid_phone_count = 0
         for c in customers_raw:
             cid = c.get("customer_id", "").strip()
             reasons = []
             if not cid:
-                reasons.append("Missing customer_id")
+                reasons.append("Missing customer_id (Completeness)")
             elif cid in seen_cust:
-                reasons.append(f"Duplicate customer_id {cid}")
+                reasons.append(f"Duplicate customer_id {cid} (Uniqueness)")
             else:
                 seen_cust.add(cid)
+
+            email_val = c.get("email", "").strip()
+            if not email_regex.match(email_val):
+                invalid_email_count += 1
+
+            phone_val = re.sub(r"\D", "", str(c.get("phone", "")).strip())
+            if len(phone_val) != 10:
+                invalid_phone_count += 1
 
             if reasons:
                 failed_c = dict(c)
@@ -211,41 +306,64 @@ def nammamart_etl_pipeline():
                 clean_customers.append(c)
 
         write_quarantine_records("customers.csv", failed_customers, run_id)
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "customers_unique_id",
+            "dimension": "Uniqueness", "severity": "Critical", "rows_checked": len(customers_raw),
+            "rows_failed": len(failed_customers), "status": "PASSED" if not failed_customers else "FAILED", "checked_at": checked_at
+        })
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "customers_email_validity",
+            "dimension": "Validity", "severity": "Warning", "rows_checked": len(customers_raw),
+            "rows_failed": invalid_email_count, "status": "PASSED" if invalid_email_count == 0 else "WARNING", "checked_at": checked_at
+        })
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "customers_phone_validity",
+            "dimension": "Validity", "severity": "Warning", "rows_checked": len(customers_raw),
+            "rows_failed": invalid_phone_count, "status": "PASSED" if invalid_phone_count == 0 else "WARNING", "checked_at": checked_at
+        })
 
-        # 3. Validate Stores
-        clean_stores = list(stores_raw)
-
-        # 4. Validate Orders (Critical checks)
+        # 4. Validate Orders (Critical checks: Quantity, SLA range, Formula, Keys, Timeliness)
         clean_orders = []
         failed_orders = []
+        qty_failed = 0
+        sla_failed = 0
+        formula_failed = 0
+        orphan_keys_failed = 0
+        future_ts_failed = 0
+
         for o in orders_raw:
             reasons = []
             oid = o.get("order_id", "").strip()
             status = o.get("order_status", "").strip().upper()
 
             if not oid:
-                reasons.append("Missing order_id")
+                reasons.append("Missing order_id (Completeness)")
             if status not in {"DELIVERED", "CANCELLED", "RETURNED"}:
-                reasons.append(f"Invalid order_status: {status}")
+                reasons.append(f"Invalid order_status: {status} (Validity)")
 
             try:
                 qty = float(o.get("quantity", 0))
                 if qty <= 0:
-                    reasons.append(f"Quantity <= 0: {qty}")
+                    reasons.append(f"Quantity <= 0: {qty} (Accuracy)")
+                    qty_failed += 1
             except (ValueError, TypeError):
-                reasons.append("Non-numeric quantity")
+                reasons.append("Non-numeric quantity (Accuracy)")
+                qty_failed += 1
 
             if status == "DELIVERED":
                 deliv = o.get("delivery_minutes")
                 if not deliv or str(deliv).strip() == "":
-                    reasons.append("Missing delivery_minutes for DELIVERED order")
+                    reasons.append("Missing delivery_minutes for DELIVERED order (Completeness)")
+                    sla_failed += 1
                 else:
                     try:
                         dm = float(deliv)
                         if dm < 8 or dm > 120:
-                            reasons.append(f"delivery_minutes {dm} out of SLA range [8, 120]")
+                            reasons.append(f"delivery_minutes {dm} out of SLA range [8, 120] (Accuracy)")
+                            sla_failed += 1
                     except (ValueError, TypeError):
                         reasons.append(f"Malformed delivery_minutes: {deliv}")
+                        sla_failed += 1
 
             try:
                 qty = float(o.get("quantity", 0))
@@ -254,27 +372,25 @@ def nammamart_etl_pipeline():
                 expected_amt = round(qty * price * (1.0 - disc / 100.0), 2)
                 actual_amt = float(o.get("order_amount", 0))
                 if abs(actual_amt - expected_amt) > 0.05:
-                    reasons.append(f"Formula mismatch: expected {expected_amt}, got {actual_amt}")
+                    reasons.append(f"Formula mismatch: expected {expected_amt}, got {actual_amt} (Accuracy)")
+                    formula_failed += 1
             except (ValueError, TypeError):
                 reasons.append("Malformed pricing fields")
+                formula_failed += 1
 
-            # Referential integrity checks
+            # Consistency (Referential Integrity)
             cid = o.get("customer_id", "").strip()
-            if cid not in valid_customer_ids:
-                reasons.append(f"customer_id {cid} not in customer master")
-
             pid = o.get("product_id", "").strip()
-            if pid not in valid_product_ids:
-                reasons.append(f"product_id {pid} not in product master")
-
             sid = o.get("store_id", "").strip()
-            if sid not in valid_store_ids:
-                reasons.append(f"store_id {sid} not in store master")
+            if cid not in valid_customer_ids or pid not in valid_product_ids or sid not in valid_store_ids:
+                reasons.append(f"Orphan key in order (cust={cid}, prod={pid}, store={sid}) (Consistency)")
+                orphan_keys_failed += 1
 
             # Timeliness
             ts = o.get("order_ts", "").strip()
             if ts > "2026-10-02":
-                reasons.append(f"Future order timestamp: {ts}")
+                reasons.append(f"Future order timestamp: {ts} (Timeliness)")
+                future_ts_failed += 1
 
             if reasons:
                 failed_o = dict(o)
@@ -284,16 +400,43 @@ def nammamart_etl_pipeline():
                 clean_orders.append(o)
 
         write_quarantine_records("orders.csv", failed_orders, run_id)
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_quantity_accuracy",
+            "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(orders_raw),
+            "rows_failed": qty_failed, "status": "PASSED" if qty_failed == 0 else "FAILED", "checked_at": checked_at
+        })
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_delivery_sla_range",
+            "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(orders_raw),
+            "rows_failed": sla_failed, "status": "PASSED" if sla_failed == 0 else "FAILED", "checked_at": checked_at
+        })
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_amount_formula_match",
+            "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(orders_raw),
+            "rows_failed": formula_failed, "status": "PASSED" if formula_failed == 0 else "FAILED", "checked_at": checked_at
+        })
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_referential_integrity",
+            "dimension": "Consistency", "severity": "Critical", "rows_checked": len(orders_raw),
+            "rows_failed": orphan_keys_failed, "status": "PASSED" if orphan_keys_failed == 0 else "FAILED", "checked_at": checked_at
+        })
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_future_dates_timeliness",
+            "dimension": "Timeliness", "severity": "Critical", "rows_checked": len(orders_raw),
+            "rows_failed": future_ts_failed, "status": "PASSED" if future_ts_failed == 0 else "FAILED", "checked_at": checked_at
+        })
 
-        # 5. Clean Payments
+        # 5. Validate Payments (Consistency & Validity)
         clean_payments = []
         failed_payments = []
         valid_order_ids = {o["order_id"].strip() for o in orders_raw if o.get("order_id")}
+        orphan_payments = 0
         for p in payments_raw:
             reasons = []
             p_oid = p.get("order_id", "").strip()
             if p_oid not in valid_order_ids:
-                reasons.append(f"order_id {p_oid} not in orders master")
+                reasons.append(f"order_id {p_oid} not in orders master (Consistency)")
+                orphan_payments += 1
 
             if reasons:
                 failed_p = dict(p)
@@ -303,9 +446,18 @@ def nammamart_etl_pipeline():
                 clean_payments.append(p)
 
         write_quarantine_records("payments.csv", failed_payments, run_id)
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "payments_order_fk_consistency",
+            "dimension": "Consistency", "severity": "Critical", "rows_checked": len(payments_raw),
+            "rows_failed": orphan_payments, "status": "PASSED" if orphan_payments == 0 else "FAILED", "checked_at": checked_at
+        })
+
+        total_quarantined = len(failed_orders) + len(failed_payments) + len(failed_customers) + len(failed_products) + len(failed_stores)
+        total_extracted = len(orders_raw) + len(payments_raw) + len(customers_raw) + len(products_raw) + len(stores_raw)
 
         return {
             "run_id": run_id,
+            "checked_at": checked_at,
             "orders_clean": clean_orders,
             "orders_quarantined": len(failed_orders),
             "payments_clean": clean_payments,
@@ -315,7 +467,10 @@ def nammamart_etl_pipeline():
             "products_clean": clean_products,
             "products_quarantined": len(failed_products),
             "stores_clean": clean_stores,
-            "stores_quarantined": 0,
+            "stores_quarantined": len(failed_stores),
+            "total_extracted": total_extracted,
+            "total_quarantined": total_quarantined,
+            "dq_metrics": dq_metrics,
         }
 
     # -------------------------------------------------------------------------
@@ -337,7 +492,7 @@ def nammamart_etl_pipeline():
             except (ValueError, TypeError):
                 product_cost_map[p["product_id"]] = 0.0
 
-        # Transform Customers: Mask email and phone
+        # Transform Customers: Mask email and phone (DPDP Act 2023)
         transformed_customers = []
         for c in customers:
             transformed_customers.append({
@@ -349,7 +504,7 @@ def nammamart_etl_pipeline():
                 "area": c.get("area", ""),
                 "pincode": c.get("pincode", ""),
                 "signup_date": c.get("signup_date", ""),
-                "loyalty_tier": c.get("loyalty_tier", "Standard").strip().title(),
+                "loyalty_tier": c.get("loyalty_tier", "Standard").strip().upper(),
                 "is_active": c.get("is_active", "True"),
             })
 
@@ -369,13 +524,16 @@ def nammamart_etl_pipeline():
                 "launch_date": p.get("launch_date", ""),
             })
 
-        # Transform Stores
+        # Transform Stores (Impute zone if missing e.g. BTM Layout -> South)
         transformed_stores = []
         for s in stores:
+            zone = s.get("zone", "").strip()
+            if not zone and "BTM" in s.get("area", ""):
+                zone = "South"
             transformed_stores.append({
                 "store_id": s["store_id"],
                 "store_name": s.get("store_name", ""),
-                "zone": s.get("zone", ""),
+                "zone": zone.upper() if zone else "UNKNOWN",
                 "area": s.get("area", ""),
                 "pincode": s.get("pincode", ""),
                 "open_date": s.get("open_date", ""),
@@ -383,7 +541,7 @@ def nammamart_etl_pipeline():
                 "capacity_orders_per_day": int(s.get("capacity_orders_per_day", 100)),
             })
 
-        # Transform Orders: Derive order_date, net_revenue, gross_margin, within_15_min
+        # Transform Orders: Derive metrics
         transformed_orders = []
         for o in orders:
             qty = float(o.get("quantity", 0))
@@ -421,39 +579,67 @@ def nammamart_etl_pipeline():
                 "order_status": status,
                 "channel": o.get("channel", "APP"),
                 "delivery_minutes": dm,
-                "net_revenue": net_rev,
+                "net_revenue": round(net_rev, 2),
                 "gross_margin": round(gross_margin, 2),
                 "within_15_min": within_15,
             })
 
-        # Idempotent Load into DuckDB (or SQLite if DuckDB unavailable)
-        try:
-            import duckdb
-            con = duckdb.connect(WAREHOUSE_PATH)
-            # Create star schema tables
-            con.execute("CREATE TABLE IF NOT EXISTS etl_dim_customer AS SELECT * FROM transformed_customers WHERE 1=0;")
-            con.execute("DELETE FROM etl_dim_customer;")
-            con.register("df_cust", pd.DataFrame(transformed_customers))
-            con.execute("INSERT INTO etl_dim_customer SELECT * FROM df_cust;")
+        # Idempotent Load into DuckDB Star Schema
+        target_warehouses = [WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH]
+        for wh in target_warehouses:
+            try:
+                os.makedirs(os.path.dirname(wh), exist_ok=True)
+                con = duckdb.connect(wh)
 
-            con.execute("CREATE TABLE IF NOT EXISTS etl_dim_product AS SELECT * FROM transformed_products WHERE 1=0;")
-            con.execute("DELETE FROM etl_dim_product;")
-            con.register("df_prod", pd.DataFrame(transformed_products))
-            con.execute("INSERT INTO etl_dim_product SELECT * FROM df_prod;")
+                # 1. etl_dim_customer
+                df_cust = pd.DataFrame(transformed_customers)
+                con.register("df_cust_view", df_cust)
+                con.execute("CREATE TABLE IF NOT EXISTS etl_dim_customer AS SELECT * FROM df_cust_view WHERE 1=0;")
+                con.execute("DELETE FROM etl_dim_customer;")
+                con.execute("INSERT INTO etl_dim_customer SELECT * FROM df_cust_view;")
 
-            con.execute("CREATE TABLE IF NOT EXISTS etl_dim_store AS SELECT * FROM transformed_stores WHERE 1=0;")
-            con.execute("DELETE FROM etl_dim_store;")
-            con.register("df_store", pd.DataFrame(transformed_stores))
-            con.execute("INSERT INTO etl_dim_store SELECT * FROM df_store;")
+                # 2. etl_dim_product
+                df_prod = pd.DataFrame(transformed_products)
+                con.register("df_prod_view", df_prod)
+                con.execute("CREATE TABLE IF NOT EXISTS etl_dim_product AS SELECT * FROM df_prod_view WHERE 1=0;")
+                con.execute("DELETE FROM etl_dim_product;")
+                con.execute("INSERT INTO etl_dim_product SELECT * FROM df_prod_view;")
 
-            con.execute("CREATE TABLE IF NOT EXISTS etl_fact_orders AS SELECT * FROM transformed_orders WHERE 1=0;")
-            con.execute("DELETE FROM etl_fact_orders;")
-            con.register("df_orders", pd.DataFrame(transformed_orders))
-            con.execute("INSERT INTO etl_fact_orders SELECT * FROM df_orders;")
-            con.close()
-            print("Successfully loaded star schema into DuckDB warehouse.")
-        except Exception as e:
-            print(f"DuckDB storage notice: {e} - loaded in-memory records successfully.")
+                # 3. etl_dim_store
+                df_store = pd.DataFrame(transformed_stores)
+                con.register("df_store_view", df_store)
+                con.execute("CREATE TABLE IF NOT EXISTS etl_dim_store AS SELECT * FROM df_store_view WHERE 1=0;")
+                con.execute("DELETE FROM etl_dim_store;")
+                con.execute("INSERT INTO etl_dim_store SELECT * FROM df_store_view;")
+
+                # 4. etl_fact_orders
+                df_orders = pd.DataFrame(transformed_orders)
+                con.register("df_orders_view", df_orders)
+                con.execute("CREATE TABLE IF NOT EXISTS etl_fact_orders AS SELECT * FROM df_orders_view WHERE 1=0;")
+                con.execute("DELETE FROM etl_fact_orders;")
+                con.execute("INSERT INTO etl_fact_orders SELECT * FROM df_orders_view;")
+
+                # 5. Scorecard: dq_results
+                df_dq = pd.DataFrame(val_res["dq_metrics"])
+                con.register("df_dq_view", df_dq)
+                con.execute("""
+                    CREATE TABLE IF NOT EXISTS dq_results (
+                        run_id VARCHAR,
+                        dag_id VARCHAR,
+                        check_name VARCHAR,
+                        dimension VARCHAR,
+                        severity VARCHAR,
+                        rows_checked INTEGER,
+                        rows_failed INTEGER,
+                        status VARCHAR,
+                        checked_at TIMESTAMP
+                    );
+                """)
+                con.execute("INSERT INTO dq_results SELECT * FROM df_dq_view;")
+
+                con.close()
+            except Exception as e:
+                print(f"DuckDB storage warning on {wh}: {e}")
 
         return {
             "run_id": run_id,
@@ -463,10 +649,12 @@ def nammamart_etl_pipeline():
             "stores_loaded": len(transformed_stores),
             "orders": transformed_orders,
             "payments_clean": val_res["payments_clean"],
+            "total_extracted": val_res["total_extracted"],
+            "total_quarantined": val_res["total_quarantined"],
         }
 
     # -------------------------------------------------------------------------
-    # Step 4: Payment Gateway Reconciliation
+    # Step 4: Payment Gateway Reconciliation & Capacity Verification
     # -------------------------------------------------------------------------
     @task
     def reconcile_payments(load_res: dict[str, Any]) -> dict[str, Any]:
@@ -528,17 +716,32 @@ def nammamart_etl_pipeline():
                     })
 
         unreconciled_count = sum(1 for r in reconciliation_records if not r["is_reconciled"])
-        print(f"Payment Reconciliation Complete: {len(reconciliation_records)} total, {unreconciled_count} discrepancies.")
+
+        # Persist etl_payment_reconciliation table to DuckDB
+        df_recon = pd.DataFrame(reconciliation_records)
+        target_warehouses = [WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH]
+        for wh in target_warehouses:
+            try:
+                con = duckdb.connect(wh)
+                con.register("df_recon_view", df_recon)
+                con.execute("CREATE TABLE IF NOT EXISTS etl_payment_reconciliation AS SELECT * FROM df_recon_view WHERE 1=0;")
+                con.execute("DELETE FROM etl_payment_reconciliation;")
+                con.execute("INSERT INTO etl_payment_reconciliation SELECT * FROM df_recon_view;")
+                con.close()
+            except Exception as e:
+                print(f"Failed to persist etl_payment_reconciliation to {wh}: {e}")
 
         return {
+            "run_id": load_res["run_id"],
             "total_payments_checked": len(reconciliation_records),
             "unreconciled_discrepancies": unreconciled_count,
-            "records": reconciliation_records,
             "orders_loaded": load_res["orders_loaded"],
+            "total_extracted": load_res["total_extracted"],
+            "total_quarantined": load_res["total_quarantined"],
         }
 
     # -------------------------------------------------------------------------
-    # Step 5: Executive Morning Reporting & Run Audit
+    # Step 5: Executive Morning Reporting & Store Capacity Check (Bonus)
     # -------------------------------------------------------------------------
     @task
     def build_daily_reports(recon_res: dict[str, Any]) -> dict[str, str]:
@@ -548,8 +751,78 @@ def nammamart_etl_pipeline():
         print(f"Total Fact Orders Loaded: {recon_res['orders_loaded']}")
         print(f"Payment Gateway Reconciled Checks: {recon_res['total_payments_checked']}")
         print(f"Reconciliation Mismatch Discrepancies: {recon_res['unreconciled_discrepancies']}")
+
+        # Store Capacity Utilization Check (Bonus Requirement)
+        try:
+            con = duckdb.connect(WAREHOUSE_PATH)
+            capacity_audit = con.execute("""
+                SELECT 
+                    s.store_id, 
+                    s.store_name, 
+                    s.capacity_orders_per_day,
+                    COUNT(o.order_id) / 30 AS avg_daily_orders,
+                    ROUND((COUNT(o.order_id) / 30.0) / NULLIF(s.capacity_orders_per_day, 0) * 100, 1) AS capacity_utilization_pct
+                FROM etl_dim_store s
+                LEFT JOIN etl_fact_orders o ON s.store_id = o.store_id
+                GROUP BY s.store_id, s.store_name, s.capacity_orders_per_day
+                ORDER BY capacity_utilization_pct DESC;
+            """).fetchall()
+            print("--- Store Capacity Audit (Daily Orders vs Capacity) ---")
+            for row in capacity_audit:
+                print(f"Store {row[0]} ({row[1]}): {row[3]:.1f} orders/day vs {row[2]} cap -> {row[4]}% utilization")
+            con.close()
+        except Exception as e:
+            print(f"Capacity check notice: {e}")
+
         print("Executive KPI reports delivered successfully before 09:30 AM leadership standup.")
         return {"status": "SUCCESS", "delivered_at": pendulum.now(LOCAL_TZ).to_iso8601_string()}
+
+    # -------------------------------------------------------------------------
+    # Step 6: Observability Run Audit Task (trigger_rule="all_done")
+    # -------------------------------------------------------------------------
+    @task(trigger_rule="all_done")
+    def record_pipeline_run(recon_res: dict[str, Any]) -> None:
+        """Record run audit entry in pipeline_runs table in DuckDB."""
+        end_time_iso = pendulum.now(LOCAL_TZ).to_iso8601_string()
+        run_id = recon_res.get("run_id", "etl_manual_run")
+        rows_extracted = recon_res.get("total_extracted", 0)
+        rows_loaded = recon_res.get("orders_loaded", 0)
+        rows_quarantined = recon_res.get("total_quarantined", 0)
+
+        run_record = pd.DataFrame([{
+            "run_id": run_id,
+            "dag_id": "nammamart_etl",
+            "start_time": start_time_iso,
+            "end_time": end_time_iso,
+            "rows_extracted": rows_extracted,
+            "rows_loaded": rows_loaded,
+            "rows_quarantined": rows_quarantined,
+            "status": "SUCCESS",
+        }])
+
+        target_warehouses = [WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH]
+        for wh in target_warehouses:
+            try:
+                con = duckdb.connect(wh)
+                con.register("df_run_view", run_record)
+                con.execute("""
+                    CREATE TABLE IF NOT EXISTS pipeline_runs (
+                        run_id VARCHAR PRIMARY KEY,
+                        dag_id VARCHAR,
+                        start_time TIMESTAMP,
+                        end_time TIMESTAMP,
+                        rows_extracted INTEGER,
+                        rows_loaded INTEGER,
+                        rows_quarantined INTEGER,
+                        status VARCHAR
+                    );
+                """)
+                con.execute("DELETE FROM pipeline_runs WHERE run_id = df_run_view.run_id;")
+                con.execute("INSERT INTO pipeline_runs SELECT * FROM df_run_view;")
+                con.close()
+                print(f"Recorded pipeline audit in {wh}: run_id={run_id}")
+            except Exception as e:
+                print(f"Failed to record pipeline audit in {wh}: {e}")
 
     # Flow Graph Execution
     raw_orders = extract_orders()
@@ -563,7 +836,8 @@ def nammamart_etl_pipeline():
     )
     load_summary = transform_and_load(validation_summary)
     recon_summary = reconcile_payments(load_summary)
-    build_daily_reports(recon_summary)
+    reports = build_daily_reports(recon_summary)
+    record_pipeline_run(recon_summary)
 
 
 etl_dag = nammamart_etl_pipeline()
