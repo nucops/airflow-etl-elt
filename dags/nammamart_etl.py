@@ -34,9 +34,43 @@ else:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DATA_DIR = os.path.join(BASE_DIR, "include", "data", "nammamart")
-QUARANTINE_DIR = os.path.join(BASE_DIR, "include", "quarantine")
-WAREHOUSE_PATH = os.path.join(BASE_DIR, "include", "warehouse.duckdb")
-WAREHOUSE_SHUBHAM_PATH = os.path.join(BASE_DIR, "include", "warehouse_shubham.duckdb")
+
+
+def _resolve_output_paths(base_dir: str) -> tuple[str, str, str]:
+    """Resolve writable paths for quarantine and DuckDB warehouses."""
+    if os.path.exists("/opt/airflow/warehouse"):
+        target_dir = "/opt/airflow/warehouse"
+    else:
+        candidate = os.path.join(base_dir, "include")
+        try:
+            os.makedirs(candidate, exist_ok=True)
+            test_file = os.path.join(candidate, ".perm_test")
+            with open(test_file, "w") as f:
+                f.write("ok")
+            os.remove(test_file)
+            target_dir = candidate
+        except Exception:
+            target_dir = "/tmp/nammamart/include"
+            os.makedirs(target_dir, exist_ok=True)
+
+    quarantine_dir = os.path.join(target_dir, "quarantine")
+    os.makedirs(quarantine_dir, exist_ok=True)
+    wh_path = os.path.join(target_dir, "warehouse.duckdb")
+    wh_shubham_path = os.path.join(target_dir, "warehouse_shubham.duckdb")
+
+    src_wh = os.path.join(base_dir, "include", "warehouse.duckdb")
+    if os.path.exists(src_wh) and not os.path.exists(wh_path) and target_dir != os.path.join(base_dir, "include"):
+        try:
+            import shutil
+            shutil.copy2(src_wh, wh_path)
+            shutil.copy2(src_wh, wh_shubham_path)
+        except Exception:
+            pass
+
+    return quarantine_dir, wh_path, wh_shubham_path
+
+
+QUARANTINE_DIR, WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH = _resolve_output_paths(BASE_DIR)
 
 
 def on_failure_alert(context: dict[str, Any]) -> None:
@@ -125,7 +159,6 @@ def read_csv_records(file_name: str) -> list[dict[str, str]]:
 
 def write_quarantine_records(file_name: str, records: list[dict[str, Any]], run_id: str) -> str:
     """Write failed records to include/quarantine with failure_reason."""
-    os.makedirs(QUARANTINE_DIR, exist_ok=True)
     clean_run_id = re.sub(r"[^\w\-_\.]", "_", run_id)
     out_name = f"{os.path.splitext(file_name)[0]}_failed_{clean_run_id}.csv"
     out_path = os.path.join(QUARANTINE_DIR, out_name)
@@ -134,12 +167,27 @@ def write_quarantine_records(file_name: str, records: list[dict[str, Any]], run_
         return out_path
 
     fieldnames = list(records[0].keys())
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(records)
-
-    return out_path
+    try:
+        os.makedirs(QUARANTINE_DIR, exist_ok=True)
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(records)
+        return out_path
+    except Exception as e:
+        print(f"Notice: Failed to write quarantine file to {out_path}: {e}")
+        try:
+            fallback_dir = "/tmp/nammamart/quarantine"
+            os.makedirs(fallback_dir, exist_ok=True)
+            fallback_path = os.path.join(fallback_dir, out_name)
+            with open(fallback_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(records)
+            return fallback_path
+        except Exception as fb_err:
+            print(f"Fallback quarantine write failed: {fb_err}")
+            return out_path
 
 
 @dag(
@@ -182,13 +230,19 @@ def nammamart_etl_pipeline():
     # -------------------------------------------------------------------------
     @task
     def validate_and_quarantine(
-        orders_raw: list[dict[str, str]],
-        payments_raw: list[dict[str, str]],
-        customers_raw: list[dict[str, str]],
-        products_raw: list[dict[str, str]],
-        stores_raw: list[dict[str, str]],
+        orders_raw: list[dict[str, str]] | None = None,
+        payments_raw: list[dict[str, str]] | None = None,
+        customers_raw: list[dict[str, str]] | None = None,
+        products_raw: list[dict[str, str]] | None = None,
+        stores_raw: list[dict[str, str]] | None = None,
         **context: Any,
     ) -> dict[str, Any]:
+        orders_raw = orders_raw or []
+        payments_raw = payments_raw or []
+        customers_raw = customers_raw or []
+        products_raw = products_raw or []
+        stores_raw = stores_raw or []
+
         run_id = context.get("run_id", f"etl_run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
         checked_at = pendulum.now(LOCAL_TZ).to_iso8601_string()
 
@@ -784,15 +838,18 @@ def nammamart_etl_pipeline():
     # Step 6: Observability Run Audit Task (trigger_rule="all_done")
     # -------------------------------------------------------------------------
     @task(trigger_rule="all_done")
-    def record_pipeline_run(recon_res: dict[str, Any]) -> None:
+    def record_pipeline_run(recon_res: Any = None, **context: Any) -> None:
         """Record run audit entry in pipeline_runs table in DuckDB."""
         import duckdb
         import pandas as pd
+        if not isinstance(recon_res, dict):
+            recon_res = {}
         end_time_iso = pendulum.now(LOCAL_TZ).to_iso8601_string()
-        run_id = recon_res.get("run_id", "etl_manual_run")
+        run_id = recon_res.get("run_id") or context.get("run_id", "etl_manual_run")
         rows_extracted = recon_res.get("total_extracted", 0)
         rows_loaded = recon_res.get("orders_loaded", 0)
         rows_quarantined = recon_res.get("total_quarantined", 0)
+        status = "SUCCESS" if rows_loaded > 0 else "FAILED"
 
         run_record = pd.DataFrame([{
             "run_id": run_id,
@@ -802,7 +859,7 @@ def nammamart_etl_pipeline():
             "rows_extracted": rows_extracted,
             "rows_loaded": rows_loaded,
             "rows_quarantined": rows_quarantined,
-            "status": "SUCCESS",
+            "status": status,
         }])
 
         target_warehouses = [WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH]

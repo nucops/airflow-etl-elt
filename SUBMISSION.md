@@ -22,6 +22,7 @@
 - [x] Bonus features (+10 marks): Slack failure alerting via `Variable.get("SLACK_WEBHOOK_URL")`, SCD Type 2 customer dimension `dim_customer_scd2`, store capacity utilization audit (`daily_orders` vs `capacity_orders_per_day`), and data quality trend scorecard.
 - [x] Cloud-native Kubernetes Kustomize manifests in `apps/fde/` adhering to [`nucops/public-workloads`](https://github.com/nucops/public-workloads) standards (zero secrets, parameterized `${CLUSTER_DOMAIN}`, PSS baseline/restricted).
 - [x] Single commented reference template `apps/fde/example.yaml` for private secrets and Flux GitOps overlays.
+- [x] Screenshots captured and linked in Section 10: both DAGs in Graph view (all green), schedule showing 9:00 AM IST, quarantine CSV with failure reasons, and DuckDB SQL query results (`dq_results`, `pipeline_runs`, and `mart_payment_reconciliation`).
 - [x] No secrets, API keys, or cleartext customer PII outside `include/data/`.
 
 ---
@@ -427,5 +428,53 @@ ORDER BY severity DESC, dimension ASC;
 | **Validity** | Warning | `payments_mode_validity` | 2,228 | 6 | `WARNING` |
 
 ---
+
+## 10. Visual Verification & Proof of Execution (Screenshots)
+
+All execution artifacts have been captured and placed under [`screenshots/`](screenshots/):
+
+### 10.1 Airflow DAG Graph Views (All Green Successful Runs)
+* **ETL Pipeline DAG (`nammamart_etl`)**:
+  Shows parallel extraction tasks (`extract_orders`, `extract_payments`, etc.), validation & quarantine, PII masking, star-schema DuckDB load, and reconciliation.
+  
+  ![ETL DAG Graph View](screenshots/01_dag_graph_etl.png)
+
+* **ELT Pipeline DAG (`nammamart_elt`)**:
+  Shows parallel raw loading tasks, staging SQL transformations, incremental MERGE/upsert step, and analytical data marts generation.
+  
+  ![ELT DAG Graph View](screenshots/02_dag_graph_elt.png)
+
+### 10.2 DAG Scheduling & 9:00 AM IST SLA
+Shows Airflow schedule configured to `0 9 * * 1-6` (`Asia/Kolkata`) displaying next run timestamp corresponding to `03:30 AM UTC` / `09:00 AM IST`.
+
+![DAG Schedule 9:00 AM IST](screenshots/03_schedule_9am_ist.png)
+
+### 10.3 Quarantine Output File
+Shows quarantined records in `include/quarantine/` with clear `failure_reason` column (e.g. invalid negative quantity, SLA violations, orphan keys).
+
+![Quarantine File with Failure Reasons](screenshots/04_quarantine_file.png)
+
+### 10.4 Data Quality Scorecard (`dq_results`)
+Shows DuckDB SQL query execution output querying `dq_results` across all 6 quality dimensions (Accuracy, Completeness, Consistency, Timeliness, Uniqueness, Validity).
+
+![Data Quality Results Query](screenshots/05_dq_results_query.png)
+
+### 10.5 Pipeline Run Audit Table (`pipeline_runs`)
+Shows execution run audit log verifying `rows_extracted`, `rows_loaded`, `rows_quarantined`, and `status = 'SUCCESS'`.
+
+![Pipeline Run Audit Query](screenshots/06_pipeline_runs_query.png)
+
+### 10.6 Payment Reconciliation Table
+Shows reconciliation table comparing orders against payment gateway transactions with exact discrepancy amounts and reasons.
+
+![Payment Reconciliation Query](screenshots/07_payment_reconciliation.png)
+
+### 10.7 Bonus: Slack Failure Alert Notification (Optional)
+Shows simulated failure alert sent via Airflow callback `on_failure_alert` using `Variable.get("SLACK_WEBHOOK_URL")`.
+
+![Slack Alert Notification](screenshots/08_slack_failure_alert.png)
+
+---
 **Verified & Signed off by**: Shubham (Forward Deployed Engineer)
+
 

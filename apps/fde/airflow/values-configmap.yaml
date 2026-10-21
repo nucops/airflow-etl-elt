@@ -97,6 +97,15 @@ data:
       - name: _PIP_ADDITIONAL_REQUIREMENTS
         value: "duckdb==1.1.3 pandas"
 
+    # -- Shared ReadWriteMany storage for warehouse and quarantine across all worker pods
+    extraVolumes:
+      - name: warehouse-storage
+        persistentVolumeClaim:
+          claimName: airflow-warehouse-pvc
+    extraVolumeMounts:
+      - name: warehouse-storage
+        mountPath: /opt/airflow/warehouse
+
     # -- DAG deployment via git-sync
     dags:
       persistence:

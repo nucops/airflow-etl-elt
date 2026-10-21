@@ -35,8 +35,41 @@ else:
 
 DATA_DIR = os.path.join(BASE_DIR, "include", "data", "nammamart")
 SQL_DIR = os.path.join(BASE_DIR, "include", "sql")
-WAREHOUSE_PATH = os.path.join(BASE_DIR, "include", "warehouse.duckdb")
-WAREHOUSE_SHUBHAM_PATH = os.path.join(BASE_DIR, "include", "warehouse_shubham.duckdb")
+
+
+def _resolve_output_paths(base_dir: str) -> tuple[str, str]:
+    """Resolve writable paths for DuckDB warehouses."""
+    if os.path.exists("/opt/airflow/warehouse"):
+        target_dir = "/opt/airflow/warehouse"
+    else:
+        candidate = os.path.join(base_dir, "include")
+        try:
+            os.makedirs(candidate, exist_ok=True)
+            test_file = os.path.join(candidate, ".perm_test")
+            with open(test_file, "w") as f:
+                f.write("ok")
+            os.remove(test_file)
+            target_dir = candidate
+        except Exception:
+            target_dir = "/tmp/nammamart/include"
+            os.makedirs(target_dir, exist_ok=True)
+
+    wh_path = os.path.join(target_dir, "warehouse.duckdb")
+    wh_shubham_path = os.path.join(target_dir, "warehouse_shubham.duckdb")
+
+    src_wh = os.path.join(base_dir, "include", "warehouse.duckdb")
+    if os.path.exists(src_wh) and not os.path.exists(wh_path) and target_dir != os.path.join(base_dir, "include"):
+        try:
+            import shutil
+            shutil.copy2(src_wh, wh_path)
+            shutil.copy2(src_wh, wh_shubham_path)
+        except Exception:
+            pass
+
+    return wh_path, wh_shubham_path
+
+
+WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH = _resolve_output_paths(BASE_DIR)
 
 
 def on_failure_alert(context: dict[str, Any]) -> None:
@@ -338,15 +371,18 @@ def nammamart_elt_pipeline():
     # Layer 4: Observability Run Audit Task (trigger_rule="all_done")
     # -------------------------------------------------------------------------
     @task(trigger_rule="all_done")
-    def record_pipeline_run(marts_res: dict[str, Any]) -> None:
+    def record_pipeline_run(marts_res: Any = None, **context: Any) -> None:
         """Record run audit entry in pipeline_runs table in DuckDB."""
         import duckdb
         import pandas as pd
+        if not isinstance(marts_res, dict):
+            marts_res = {}
         end_time_iso = pendulum.now(LOCAL_TZ).to_iso8601_string()
-        run_id = marts_res.get("run_id", "elt_manual_run")
+        run_id = marts_res.get("run_id") or context.get("run_id", "elt_manual_run")
         rows_extracted = marts_res.get("total_extracted", 0)
         rows_loaded = marts_res.get("orders_loaded", 0)
         rows_quarantined = marts_res.get("orders_quarantined", 0)
+        status = "SUCCESS" if rows_loaded > 0 else "FAILED"
 
         run_record = pd.DataFrame([{
             "run_id": run_id,
@@ -356,7 +392,7 @@ def nammamart_elt_pipeline():
             "rows_extracted": rows_extracted,
             "rows_loaded": rows_loaded,
             "rows_quarantined": rows_quarantined,
-            "status": "SUCCESS",
+            "status": status,
         }])
 
         target_warehouses = [WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH]
