@@ -1,10 +1,9 @@
 # NammaMart Quick Commerce — ETL & ELT Pipeline Submission
 
-**Student / Engineer**: Shubham  
+**Student / Engineer**: Shubham Sharma  
+**Email**: shubham@cossth.com  
 **Course**: IIT Roorkee CEC & Futurense · *Data Pipeline to ML Model* (FDAIE Module 2)  
-**Ticket Ref**: `AIT-175`  
-**GitHub Repository**: [https://github.com/nucops/airflow-etl-elt](https://github.com/nucops/airflow-etl-elt)  
-**Branch**: [`solution`](https://github.com/nucops/airflow-etl-elt/tree/solution)  
+**GitHub Repository**: [https://github.com/nucops/airflow-etl-elt/tree/solution](https://github.com/nucops/airflow-etl-elt/tree/solution)  
 **Live Airflow UI**: [https://airflow.nucops.com](https://airflow.nucops.com)  
 **Airflow Credentials**: Username: `demo` | Password: `demo123`  
 
@@ -421,5 +420,3 @@ ORDER BY rejected_count DESC;
 | Clean Product Count | **145** | **145** | **0** | **100% Exact Match** |
 
 ---
-
-**Verified & Signed off by**: Shubham (Forward Deployed Engineer)
