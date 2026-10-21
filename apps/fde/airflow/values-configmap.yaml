@@ -136,6 +136,7 @@ data:
       core:
         dags_are_paused_at_creation: "True"
         load_examples: "False"
+        dagbag_import_timeout: "120.0"
       webserver:
         base_url: "https://airflow.nucops.com"
         expose_config: "True"
