@@ -137,9 +137,11 @@ data:
         dags_are_paused_at_creation: "True"
         load_examples: "False"
       webserver:
+        base_url: "https://airflow.nucops.com"
         expose_config: "True"
         instance_name: "NucOps FDE Airflow"
       logging:
+
         remote_logging: "False"
 
     # -- Disable built-in ingress (we manage ingress externally via Traefik)

@@ -9,12 +9,13 @@ metadata:
     gethomepage.dev/group: AI & Data
     gethomepage.dev/icon: https://assets.cossth.com/icons/airflow.png
     gethomepage.dev/name: Airflow
-    gethomepage.dev/href: https://airflow.${CLUSTER_DOMAIN}
+    gethomepage.dev/href: https://airflow.${ADDITIONAL_DOMAIN_1}
+    gethomepage.dev/siteMonitor: https://airflow.${ADDITIONAL_DOMAIN_1}
 spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`airflow.${CLUSTER_DOMAIN}`)
+    - match: Host(`airflow.${ADDITIONAL_DOMAIN_1}`)
       kind: Rule
       services:
         - name: airflow-webserver

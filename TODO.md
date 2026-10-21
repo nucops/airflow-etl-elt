@@ -72,7 +72,8 @@ fdeM2/
 - [x] **HelmRelease & Repository (`apps/fde/airflow/release.yaml`, `repository.yaml`)**:
   - Official Apache Airflow Helm repository and HelmRelease 1.22.0.
 - [x] **Ingress Manifest (`apps/fde/airflow/ingress.yaml`)**:
-  - Traefik IngressRoute with `airflow.${CLUSTER_DOMAIN}` and Homepage integration (`gethomepage.dev/*`).
+  - Traefik IngressRoute with `airflow.${ADDITIONAL_DOMAIN_1}` and Homepage integration (`gethomepage.dev/*`).
+
 - [x] **Kustomization Files**:
   - `apps/fde/airflow/kustomization.yaml`: aggregates release, repository, postgres, values-configmap, ingress (no secret resources).
   - `apps/fde/kustomization.yaml`: aggregates namespace and airflow sub-tier.
