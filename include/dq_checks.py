@@ -120,14 +120,39 @@ def validate_order_row(row: dict[str, Any], valid_customers: set[str], valid_pro
     return reasons
 
 
+def validate_store_row(row: dict[str, Any]) -> list[str]:
+    """Validate a single store record for completeness and accuracy."""
+    reasons = []
+    if not row.get("store_id"):
+        reasons.append("Missing store_id (Completeness)")
+    zone = row.get("zone")
+    if zone is None or str(zone).strip() == "":
+        reasons.append("Missing zone (Completeness)")
+    try:
+        cap = int(row.get("capacity_orders_per_day", 0))
+        if cap <= 0:
+            reasons.append(f"Capacity must be positive, got {cap} (Accuracy)")
+    except (ValueError, TypeError):
+        reasons.append("Malformed capacity_orders_per_day")
+    pincode = str(row.get("pincode", "")).strip()
+    if not re.match(r"^[1-9][0-9]{5}$", pincode):
+        reasons.append(f"Invalid 6-digit PIN code: {pincode} (Validity)")
+    return reasons
+
+
 def run_checks_suite():
     """Verify quality logic against test assertions."""
     assert mask_email("shubham@cossth.com") == "sh***@cossth.com"
     assert mask_phone("9876543210") == "98******10"
     assert normalize_payment_mode(" upi ") == "UPI"
     assert calculate_expected_amount(2, 100, 10) == 180.0
+    bad_store = {"store_id": "S07", "zone": "", "capacity_orders_per_day": "500", "pincode": "560076"}
+    assert "Missing zone (Completeness)" in validate_store_row(bad_store)
+    zero_cap_store = {"store_id": "S12", "zone": "West", "capacity_orders_per_day": "0", "pincode": "560010"}
+    assert any("Capacity must be positive" in r for r in validate_store_row(zero_cap_store))
     print("All core data quality rule unit checks PASSED.")
 
 
 if __name__ == "__main__":
     run_checks_suite()
+
