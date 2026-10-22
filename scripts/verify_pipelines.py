@@ -19,7 +19,10 @@ DB_PATH = os.path.join(BASE_DIR, "include", "warehouse_shubham.duckdb")
 WH_PATH = os.path.join(BASE_DIR, "include", "warehouse.duckdb")
 
 if os.path.exists(DB_PATH):
-    os.remove(DB_PATH)
+    try:
+        os.remove(DB_PATH)
+    except Exception:
+        pass
 
 con = duckdb.connect(DB_PATH)
 
