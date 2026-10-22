@@ -16,8 +16,6 @@ import urllib.request
 from datetime import timedelta
 from typing import Any
 
-import duckdb
-import pandas as pd
 import pendulum
 from airflow.decorators import dag, task
 
@@ -342,6 +340,8 @@ def nammamart_elt_pipeline():
     @task(trigger_rule="all_done")
     def record_pipeline_run(marts_res: dict[str, Any]) -> None:
         """Record run audit entry in pipeline_runs table in DuckDB."""
+        import duckdb
+        import pandas as pd
         end_time_iso = pendulum.now(LOCAL_TZ).to_iso8601_string()
         run_id = marts_res.get("run_id", "elt_manual_run")
         rows_extracted = marts_res.get("total_extracted", 0)

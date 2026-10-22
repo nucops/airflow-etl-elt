@@ -16,8 +16,6 @@ import urllib.request
 from datetime import timedelta
 from typing import Any
 
-import duckdb
-import pandas as pd
 import pendulum
 from airflow.decorators import dag, task
 
@@ -585,6 +583,8 @@ def nammamart_etl_pipeline():
             })
 
         # Idempotent Load into DuckDB Star Schema
+        import duckdb
+        import pandas as pd
         target_warehouses = [WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH]
         for wh in target_warehouses:
             try:
@@ -718,6 +718,8 @@ def nammamart_etl_pipeline():
         unreconciled_count = sum(1 for r in reconciliation_records if not r["is_reconciled"])
 
         # Persist etl_payment_reconciliation table to DuckDB
+        import duckdb
+        import pandas as pd
         df_recon = pd.DataFrame(reconciliation_records)
         target_warehouses = [WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH]
         for wh in target_warehouses:
@@ -754,6 +756,7 @@ def nammamart_etl_pipeline():
 
         # Store Capacity Utilization Check (Bonus Requirement)
         try:
+            import duckdb
             con = duckdb.connect(WAREHOUSE_PATH)
             capacity_audit = con.execute("""
                 SELECT 
@@ -783,6 +786,8 @@ def nammamart_etl_pipeline():
     @task(trigger_rule="all_done")
     def record_pipeline_run(recon_res: dict[str, Any]) -> None:
         """Record run audit entry in pipeline_runs table in DuckDB."""
+        import duckdb
+        import pandas as pd
         end_time_iso = pendulum.now(LOCAL_TZ).to_iso8601_string()
         run_id = recon_res.get("run_id", "etl_manual_run")
         rows_extracted = recon_res.get("total_extracted", 0)
