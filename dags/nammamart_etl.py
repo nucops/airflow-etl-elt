@@ -74,15 +74,17 @@ QUARANTINE_DIR, WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH = _resolve_output_paths(B
 
 
 def on_failure_alert(context: dict[str, Any]) -> None:
-    """Send failure alert to Slack webhook using Airflow Variable (Bonus requirement)."""
+    """Send failure alert to Slack webhook and email using Airflow Variables (Bonus requirement)."""
+    dag_id = context.get("task_instance").dag_id if context.get("task_instance") else "nammamart_etl"
+    task_id = context.get("task_instance").task_id if context.get("task_instance") else "unknown_task"
+    run_id = context.get("run_id", "manual")
+    exception = str(context.get("exception", "Execution error"))
+
+    # 1. Slack Notification
     try:
         from airflow.models import Variable
         webhook_url = Variable.get("SLACK_WEBHOOK_URL", default_var=None)
         if webhook_url:
-            dag_id = context.get("task_instance").dag_id if context.get("task_instance") else "nammamart_etl"
-            task_id = context.get("task_instance").task_id if context.get("task_instance") else "unknown_task"
-            run_id = context.get("run_id", "manual")
-            exception = str(context.get("exception", "Execution error"))
             payload = {
                 "text": (
                     f":rotating_light: *NammaMart Pipeline Failure Alert*\n"
@@ -101,11 +103,32 @@ def on_failure_alert(context: dict[str, Any]) -> None:
     except Exception as e:
         print(f"Notice: Slack failure alert notification could not be sent: {e}")
 
+    # 2. Email Notification
+    try:
+        from airflow.models import Variable
+        alert_email = Variable.get("ALERT_EMAIL", default_var=None)
+        if alert_email:
+            from airflow.utils.email import send_email
+            subject = f"[Airflow Alert] NammaMart Pipeline Failure: {dag_id}.{task_id}"
+            html_content = f"""
+            <h3>NammaMart Pipeline Failure Alert</h3>
+            <p><strong>DAG:</strong> {dag_id}</p>
+            <p><strong>Task:</strong> {task_id}</p>
+            <p><strong>Run ID:</strong> {run_id}</p>
+            <p><strong>Error Message:</strong></p>
+            <pre style="background:#f4f4f4;padding:10px;border-left:4px solid #d9534f;">{exception}</pre>
+            """
+            recipients = [e.strip() for e in alert_email.split(",") if e.strip()]
+            send_email(to=recipients, subject=subject, html_content=html_content)
+            print(f"Successfully dispatched Email failure alert to {recipients}.")
+    except Exception as e:
+        print(f"Notice: Email failure alert notification could not be sent: {e}")
+
 
 default_args = {
     "owner": "airflow",
     "depends_on_past": False,
-    "email_on_failure": False,
+    "email_on_failure": True,
     "email_on_retry": False,
     "retries": 1,
     "retry_delay": timedelta(minutes=2),
