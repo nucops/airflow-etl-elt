@@ -225,23 +225,25 @@ con.execute("""
     DELETE FROM dq_results;
 
     INSERT INTO dq_results VALUES
-    ('run_20261022_090000', 'nammamart_etl', 'orders_quantity_positive', 'Accuracy', 'Critical', 2412, 10, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'orders_sla_range_8_120', 'Accuracy', 'Critical', 2412, 14, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'orders_formula_recomputation', 'Accuracy', 'Critical', 2412, 18, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'orders_customer_fk_consistency', 'Consistency', 'Critical', 2412, 18, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'orders_product_fk_consistency', 'Consistency', 'Critical', 2412, 9, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'orders_store_fk_consistency', 'Consistency', 'Critical', 2412, 5, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'orders_future_dates_timeliness', 'Timeliness', 'Critical', 2412, 12, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'payments_mode_validity', 'Validity', 'Warning', 2228, 6, 'WARNING', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'payments_order_fk_consistency', 'Consistency', 'Critical', 2228, 8, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'payments_success_amount_equality', 'Accuracy', 'Critical', 2228, 14, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'customers_email_regex_validity', 'Validity', 'Warning', 405, 12, 'WARNING', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'customers_phone_10_digit_validity', 'Validity', 'Warning', 405, 7, 'WARNING', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'customers_dpdp_pii_masking', 'Validity', 'Critical', 405, 0, 'PASSED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'products_cost_vs_mrp_accuracy', 'Accuracy', 'Critical', 152, 5, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'stores_zone_completeness', 'Completeness', 'Warning', 15, 1, 'WARNING', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_etl', 'stores_capacity_accuracy', 'Accuracy', 'Critical', 15, 1, 'FAILED', CURRENT_TIMESTAMP),
-    ('run_20261022_090000', 'nammamart_elt', 'elt_stg_orders_multi_dimension', 'Multi-Dimensional', 'Critical', 2572, 86, 'FLAGGED', CURRENT_TIMESTAMP);
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_quantity_positive', 'Accuracy', 'Critical', 2412, 10, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_sla_range_8_120', 'Accuracy', 'Critical', 2412, 14, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_formula_recomputation', 'Accuracy', 'Critical', 2412, 18, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_customer_fk_consistency', 'Consistency', 'Critical', 2412, 18, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_product_fk_consistency', 'Consistency', 'Critical', 2412, 9, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_store_fk_consistency', 'Consistency', 'Critical', 2412, 5, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_future_dates_timeliness', 'Timeliness', 'Critical', 2412, 12, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'payments_mode_validity', 'Validity', 'Warning', 2228, 6, 'WARNING', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'payments_order_fk_consistency', 'Consistency', 'Critical', 2228, 8, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'payments_success_amount_equality', 'Accuracy', 'Critical', 2228, 14, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'customers_email_regex_validity', 'Validity', 'Warning', 405, 12, 'WARNING', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'customers_phone_10_digit_validity', 'Validity', 'Warning', 405, 7, 'WARNING', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'customers_dpdp_pii_masking', 'Validity', 'Critical', 405, 0, 'PASSED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'products_cost_vs_mrp_accuracy', 'Accuracy', 'Critical', 152, 5, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'stores_zone_completeness', 'Completeness', 'Warning', 15, 1, 'WARNING', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'stores_capacity_accuracy', 'Accuracy', 'Critical', 15, 1, 'FAILED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_volume_anomaly', 'Volume', 'Critical', 2412, 0, 'PASSED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_etl_shubham', 'orders_distribution_drift', 'Distribution', 'Warning', 2412, 0, 'PASSED', CURRENT_TIMESTAMP),
+    ('run_20261022_090000', 'nammamart_elt_shubham', 'elt_stg_orders_multi_dimension', 'Multi-Dimensional', 'Critical', 2572, 86, 'FLAGGED', CURRENT_TIMESTAMP);
 
     CREATE TABLE IF NOT EXISTS pipeline_runs (
         run_id VARCHAR PRIMARY KEY,
@@ -257,8 +259,8 @@ con.execute("""
     DELETE FROM pipeline_runs;
 
     INSERT INTO pipeline_runs VALUES
-    ('run_20261022_090000_etl', 'nammamart_etl', TIMESTAMP '2026-10-22 09:00:00', TIMESTAMP '2026-10-22 09:02:14', 5372, 2326, 86, 'SUCCESS'),
-    ('run_20261022_090000_elt', 'nammamart_elt', TIMESTAMP '2026-10-22 09:00:00', TIMESTAMP '2026-10-22 09:01:48', 5532, 2486, 86, 'SUCCESS');
+    ('run_20261022_090000_etl', 'nammamart_etl_shubham', TIMESTAMP '2026-10-22 09:00:00', TIMESTAMP '2026-10-22 09:02:14', 5372, 2326, 86, 'SUCCESS'),
+    ('run_20261022_090000_elt', 'nammamart_elt_shubham', TIMESTAMP '2026-10-22 09:00:00', TIMESTAMP '2026-10-22 09:01:48', 5532, 2486, 86, 'SUCCESS');
 """)
 print(f"dq_results scorecard populated: {con.execute('SELECT count(*) FROM dq_results').fetchone()[0]} checks recorded.")
 print(f"pipeline_runs audit populated: {con.execute('SELECT count(*) FROM pipeline_runs').fetchone()[0]} runs recorded.")

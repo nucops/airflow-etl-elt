@@ -80,10 +80,10 @@ This repository implements both paradigms side-by-side:
   CSV Files ──> DuckDB (raw_* tables) ──> Staging SQL Views ──> Mart SQL Models
 ```
 
-1. **ETL (`dags/nammamart_etl.py`)**:
+1. **ETL (`dags/nammamart_etl_shubham.py`)**:
    * *Compute runs in Python memory before writing to storage.*
    * Data is extracted from raw CSVs, validated against quality rules in Pandas, invalid records are stripped to a quarantine directory, and clean records are transformed and loaded into a dimensional Star Schema.
-2. **ELT (`dags/nammamart_elt.py`)**:
+2. **ELT (`dags/nammamart_elt_shubham.py`)**:
    * *Compute runs inside the warehouse engine using SQL.*
    * Raw CSV data is copied verbatim into `raw_*` database tables. Transformations and aggregations are performed downstream using pure SQL (`include/sql/`) across multiple layers: **Raw → Staging → Data Marts**.
 
@@ -268,8 +268,8 @@ fdeM2/
 │   └── tasks.json                 # Fast task shortcuts for starting stacks & running tests
 ├── upstream/                      # Git submodule tracking the official course repository
 ├── dags/
-│   ├── nammamart_etl.py           # Production ETL DAG (Extract -> Validate -> Quarantine -> Load)
-│   └── nammamart_elt.py           # Production ELT DAG (Raw -> DuckDB SQL Staging -> Marts)
+│   ├── nammamart_etl_shubham.py   # Production ETL DAG (Extract -> Validate -> Quarantine -> Load)
+│   └── nammamart_elt_shubham.py   # Production ELT DAG (Raw -> DuckDB SQL Staging -> Marts)
 ├── include/
 │   ├── data/
 │   │   └── nammamart/             # Active CSV feeds (orders, payments, customers, products, stores)

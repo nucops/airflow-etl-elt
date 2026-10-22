@@ -75,7 +75,7 @@ QUARANTINE_DIR, WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH = _resolve_output_paths(B
 
 def on_failure_alert(context: dict[str, Any]) -> None:
     """Send failure alert to Slack webhook and email using Airflow Variables (Bonus requirement)."""
-    dag_id = context.get("task_instance").dag_id if context.get("task_instance") else "nammamart_etl"
+    dag_id = context.get("task_instance").dag_id if context.get("task_instance") else "nammamart_etl_shubham"
     task_id = context.get("task_instance").task_id if context.get("task_instance") else "unknown_task"
     run_id = context.get("run_id", "manual")
     exception = str(context.get("exception", "Execution error"))
@@ -214,7 +214,7 @@ def write_quarantine_records(file_name: str, records: list[dict[str, Any]], run_
 
 
 @dag(
-    dag_id="nammamart_etl",
+    dag_id="nammamart_etl_shubham",
     default_args=default_args,
     description="NammaMart Production ETL Pipeline with Quality Quarantine and Star Schema",
     schedule="0 9 * * 1-6",  # 9:00 AM IST Monday to Saturday
@@ -305,12 +305,12 @@ def nammamart_etl_pipeline():
 
         write_quarantine_records("stores.csv", failed_stores, run_id)
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "stores_zone_completeness",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "stores_zone_completeness",
             "dimension": "Completeness", "severity": "Warning", "rows_checked": len(stores_raw),
             "rows_failed": missing_zone_count, "status": "PASSED" if missing_zone_count == 0 else "WARNING", "checked_at": checked_at
         })
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "stores_capacity_accuracy",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "stores_capacity_accuracy",
             "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(stores_raw),
             "rows_failed": zero_cap_count, "status": "PASSED" if zero_cap_count == 0 else "FAILED", "checked_at": checked_at
         })
@@ -343,7 +343,7 @@ def nammamart_etl_pipeline():
 
         write_quarantine_records("products.csv", failed_products, run_id)
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "products_cost_vs_mrp",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "products_cost_vs_mrp",
             "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(products_raw),
             "rows_failed": cost_mrp_failed, "status": "PASSED" if cost_mrp_failed == 0 else "FAILED", "checked_at": checked_at
         })
@@ -382,17 +382,17 @@ def nammamart_etl_pipeline():
 
         write_quarantine_records("customers.csv", failed_customers, run_id)
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "customers_unique_id",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "customers_unique_id",
             "dimension": "Uniqueness", "severity": "Critical", "rows_checked": len(customers_raw),
             "rows_failed": len(failed_customers), "status": "PASSED" if not failed_customers else "FAILED", "checked_at": checked_at
         })
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "customers_email_validity",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "customers_email_validity",
             "dimension": "Validity", "severity": "Warning", "rows_checked": len(customers_raw),
             "rows_failed": invalid_email_count, "status": "PASSED" if invalid_email_count == 0 else "WARNING", "checked_at": checked_at
         })
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "customers_phone_validity",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "customers_phone_validity",
             "dimension": "Validity", "severity": "Warning", "rows_checked": len(customers_raw),
             "rows_failed": invalid_phone_count, "status": "PASSED" if invalid_phone_count == 0 else "WARNING", "checked_at": checked_at
         })
@@ -476,27 +476,27 @@ def nammamart_etl_pipeline():
 
         write_quarantine_records("orders.csv", failed_orders, run_id)
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_quantity_accuracy",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "orders_quantity_accuracy",
             "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(orders_raw),
             "rows_failed": qty_failed, "status": "PASSED" if qty_failed == 0 else "FAILED", "checked_at": checked_at
         })
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_delivery_sla_range",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "orders_delivery_sla_range",
             "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(orders_raw),
             "rows_failed": sla_failed, "status": "PASSED" if sla_failed == 0 else "FAILED", "checked_at": checked_at
         })
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_amount_formula_match",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "orders_amount_formula_match",
             "dimension": "Accuracy", "severity": "Critical", "rows_checked": len(orders_raw),
             "rows_failed": formula_failed, "status": "PASSED" if formula_failed == 0 else "FAILED", "checked_at": checked_at
         })
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_referential_integrity",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "orders_referential_integrity",
             "dimension": "Consistency", "severity": "Critical", "rows_checked": len(orders_raw),
             "rows_failed": orphan_keys_failed, "status": "PASSED" if orphan_keys_failed == 0 else "FAILED", "checked_at": checked_at
         })
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "orders_future_dates_timeliness",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "orders_future_dates_timeliness",
             "dimension": "Timeliness", "severity": "Critical", "rows_checked": len(orders_raw),
             "rows_failed": future_ts_failed, "status": "PASSED" if future_ts_failed == 0 else "FAILED", "checked_at": checked_at
         })
@@ -522,9 +522,32 @@ def nammamart_etl_pipeline():
 
         write_quarantine_records("payments.csv", failed_payments, run_id)
         dq_metrics.append({
-            "run_id": run_id, "dag_id": "nammamart_etl", "check_name": "payments_order_fk_consistency",
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "payments_order_fk_consistency",
             "dimension": "Consistency", "severity": "Critical", "rows_checked": len(payments_raw),
             "rows_failed": orphan_payments, "status": "PASSED" if orphan_payments == 0 else "FAILED", "checked_at": checked_at
+        })
+
+        # 6. Volume Anomaly Check (Observability Experiment 7: Alert if volume drops by >90%)
+        volume_anomaly_failed = 1 if len(orders_raw) < 200 else 0
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "orders_volume_anomaly",
+            "dimension": "Volume", "severity": "Critical", "rows_checked": len(orders_raw),
+            "rows_failed": volume_anomaly_failed, "status": "PASSED" if volume_anomaly_failed == 0 else "FAILED", "checked_at": checked_at
+        })
+
+        # 7. Distribution Drift Check (Observability Experiment 8: Flag extreme price outliers)
+        extreme_price_count = 0
+        for o in orders_raw:
+            try:
+                p = float(o.get("unit_price", 0))
+                if p > 5000.0 or p < 0:
+                    extreme_price_count += 1
+            except Exception:
+                extreme_price_count += 1
+        dq_metrics.append({
+            "run_id": run_id, "dag_id": "nammamart_etl_shubham", "check_name": "orders_distribution_drift",
+            "dimension": "Distribution", "severity": "Warning", "rows_checked": len(orders_raw),
+            "rows_failed": extreme_price_count, "status": "PASSED" if extreme_price_count == 0 else "WARNING", "checked_at": checked_at
         })
 
         total_quarantined = len(failed_orders) + len(failed_payments) + len(failed_customers) + len(failed_products) + len(failed_stores)
@@ -876,7 +899,7 @@ def nammamart_etl_pipeline():
 
         run_record = pd.DataFrame([{
             "run_id": run_id,
-            "dag_id": "nammamart_etl",
+            "dag_id": "nammamart_etl_shubham",
             "start_time": start_time_iso,
             "end_time": end_time_iso,
             "rows_extracted": rows_extracted,
