@@ -1,6 +1,6 @@
 # Assignment Screenshots Directory
 
-Save all your assignment verification screenshots in this directory with the following exact filenames so they automatically link into `SUBMISSION.md`:
+Save all your assignment verification screenshots in this directory with the following exact filenames so they automatically link into `SUBMISSION_SHUBHAM.md`:
 
 | # | Filename | Description | Where to capture |
 |---|---|---|---|
