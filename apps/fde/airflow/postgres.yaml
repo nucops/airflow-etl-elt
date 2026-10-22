@@ -7,10 +7,23 @@ spec:
   instances: 1
   imageName: ghcr.io/cloudnative-pg/postgresql:16
   enableSuperuserAccess: true
+  enablePDB: true
+
+  # Tolerant probe timeouts to absorb transient storage / node flaps
+  livenessProbeTimeout: 300
+  startDelay: 3600
+  failoverDelay: 60
+
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
 
   storage:
     size: 32Gi
     storageClass: ${DB_SC}
+    resizeInUseVolumes: true
+
   bootstrap:
     initdb:
       database: airflow
