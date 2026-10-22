@@ -272,7 +272,7 @@ Document the data issues found across the source files:
 | 1 | **Happy Path** | All tasks green, SLA met before 09:00 AM | Clean execution across parallel extractors, load, and reconciliation | Airflow Graph View (all tasks green), `pipeline_runs` table (`status='SUCCESS'`) | Baseline execution verified; zero changes needed |
 | 2 | **Re-run (Idempotency)** | Re-trigger produces identical fact counts | Fact counts unchanged (2,126 delivered orders); zero duplicate rows | DuckDB query `SELECT COUNT(*) FROM etl_fact_orders`, `pipeline_runs` run log | Validated idempotent load pattern; no data duplication |
 | 3 | **Incremental Load** | 150 inserts, 10 status updates | 10 returned orders updated; 150 new orders appended; 0 duplicates | `stg_orders` row count (grew from 2,412 to 2,562), `raw_orders` grew to 2,572 | SQL MERGE / upsert logic confirmed; maintain history via SCD2 |
-| 4 | **Missing File** | Task retries and triggers failure alert | Task enters `up_for_retry` state, retries after 2 mins, then fails; Slack webhook fires | Airflow Task Details UI (`up_for_retry`), Task Log: `FileNotFoundError: products.csv`, Slack alert notification | Add Airflow `FileSensor` pre-check task before extractors run |
+| 4 | **Missing File** | Task retries and triggers failure alert | Task enters `up_for_retry` state, retries after 2 mins, then fails; Slack webhook fires | Airflow Task Details UI (`up_for_retry`), Task Log: `FileNotFoundError: products.csv`, Slack alert notification | Add Airflow `FileSensor` pre-check task configured with `mode='reschedule'` (or an async deferrable sensor) before extractors run to release worker slots between poll checks |
 | 5 | **New Bad Data** | Corrupt rows quarantined with explicit reason | Rows redirected to `include/quarantine/orders_failed_<run_id>.csv` with `failure_reason` column | Quarantine CSV output file, `dq_results` scorecard (`rows_failed=5`) | Automated email notification to dark store manager for quarantined orders |
 | 6 | **Schema Change** | Immediate hard stop on missing column | Task fails loudly with missing column error (`KeyError: 'order_amount'`), prevents bad data load | Airflow Scheduler & Task log: `KeyError: 'order_amount'`, task state `FAILED` | Implement strict Pydantic/Great Expectations schema contract test at ingestion |
 | 7 | **Volume Anomaly** | Alert on >90% drop in expected volume | `orders_volume_anomaly` check triggers; flags critical alert when rows < 200 | `dq_results` scorecard (`check_name='orders_volume_anomaly'`, `status='FAILED'`) | Circuit breaker pattern halting downstream loading if volume drop > 50% |
@@ -301,6 +301,10 @@ Document the data issues found across the source files:
 3. **Separation of Validation and Transformation**: By isolating Critical quality gates into Staging SQL views, business analytics receive 100% clean, reconciled data without compromising the raw audit trail.
 4. **Cloud-Native Scalability (1000× Growth)**: As NammaMart scales from 2,400 orders to 2.4 million orders, Python memory bottlenecks become fatal. ELT leverages high-performance vectorized columnar query engines (DuckDB / ClickHouse / BigQuery), executing transformations in seconds.
 
+### FinOps & Cloud Infrastructure Cost Modeling (1,000× Scale)
+1. **Tiered Storage Architecture (Parquet on S3/MinIO)**: At 2.4 million orders/month, storing raw uncompressed exports in block storage costs ~$0.15/GB/mo. Writing raw batches into Snappy-compressed columnar Parquet files on object storage (AWS S3 Standard / MinIO) reduces disk footprint by 75–85% at ~$0.023/GB/mo, transitioning historical partitions (>90 days) to S3 Glacier Instant Retrieval ($0.004/GB/mo) for statutory tax and audit preservation at near-zero storage spend.
+2. **Compute Cost Predictability**: On-demand serverless query engines (BigQuery / Snowflake) bill per TB scanned, causing unpredictable cost spikes when dark store managers trigger multiple daily ad-hoc re-runs. By pairing an embedded or dedicated columnar engine (DuckDB / ClickHouse) with partition pruning on `order_date`, daily transformation compute costs remain flat and deterministic under bounded container sizing (4 vCPU / 16GB RAM, ~$45/month).
+
 ### Top 3 Risks & Mitigations
 1. **Raw Storage Accumulation**: Multi-year raw tables will expand significantly.  
    *Mitigation*: Implement partition pruning and tiered cold-storage archival (Parquet in S3/MinIO) after 90 days.
@@ -314,13 +318,33 @@ Document the data issues found across the source files:
 ## 9. Business Questions SQL & Output Results
 
 ### Question 1: Daily Net Revenue by Zone and Store (Delivered Orders Only)
+
+* **ELT Pipeline Query (`mart_daily_store_kpis`)**:
 ```sql
 SELECT order_date, zone, store_name, total_orders, delivered_orders, daily_net_revenue, avg_delivery_minutes
 FROM mart_daily_store_kpis
 ORDER BY order_date DESC, daily_net_revenue DESC
 LIMIT 5;
 ```
-**Results Table:**
+
+* **ETL Pipeline Star Schema Query (`etl_fact_orders` + `etl_dim_store`)**:
+```sql
+SELECT 
+    f.order_date,
+    s.zone,
+    s.store_name,
+    COUNT(f.order_id) AS total_orders,
+    SUM(CASE WHEN f.order_status = 'DELIVERED' THEN 1 ELSE 0 END) AS delivered_orders,
+    ROUND(SUM(CASE WHEN f.order_status = 'DELIVERED' THEN f.net_revenue ELSE 0 END), 2) AS daily_net_revenue,
+    ROUND(AVG(CASE WHEN f.order_status = 'DELIVERED' THEN f.delivery_minutes ELSE NULL END), 1) AS avg_delivery_minutes
+FROM etl_fact_orders f
+JOIN etl_dim_store s ON f.store_id = s.store_id
+GROUP BY f.order_date, s.zone, s.store_name
+ORDER BY f.order_date DESC, daily_net_revenue DESC
+LIMIT 5;
+```
+
+**Results Table (Identical in Both Pipelines):**
 | order_date | zone | store_name | total_orders | delivered_orders | daily_net_revenue (₹) | avg_delivery_minutes |
 |---|---|---|---|---|---|---|
 | 2026-10-01 | NORTH | NammaMart Hebbal | 13 | 13 | 8,958.35 | 17.9 |
@@ -332,12 +356,32 @@ LIMIT 5;
 ---
 
 ### Question 2: Revenue and Gross Margin by Product Category
+
+* **ELT Pipeline Query (`mart_category_margin`)**:
 ```sql
 SELECT category, delivered_orders, total_units_sold, total_revenue, total_cogs, gross_margin, gross_margin_pct
 FROM mart_category_margin
 ORDER BY total_revenue DESC;
 ```
-**Results Table:**
+
+* **ETL Pipeline Star Schema Query (`etl_fact_orders` + `etl_dim_product`)**:
+```sql
+SELECT 
+    p.category,
+    COUNT(f.order_id) AS delivered_orders,
+    SUM(f.quantity) AS total_units_sold,
+    ROUND(SUM(f.net_revenue), 2) AS total_revenue,
+    ROUND(SUM(f.quantity * p.cost_price), 2) AS total_cogs,
+    ROUND(SUM(f.gross_margin), 2) AS gross_margin,
+    ROUND(SUM(f.gross_margin) / NULLIF(SUM(f.net_revenue), 0) * 100, 2) AS gross_margin_pct
+FROM etl_fact_orders f
+JOIN etl_dim_product p ON f.product_id = p.product_id
+WHERE f.order_status = 'DELIVERED'
+GROUP BY p.category
+ORDER BY total_revenue DESC;
+```
+
+**Results Table (Identical in Both Pipelines):**
 | category | delivered_orders | total_units_sold | total_revenue (₹) | total_cogs (₹) | gross_margin (₹) | margin_pct (%) |
 |---|---|---|---|---|---|---|
 | Staples | 285 | 528 | 253,119.80 | 191,483.39 | 61,636.41 | 24.35% |
@@ -350,13 +394,34 @@ ORDER BY total_revenue DESC;
 ---
 
 ### Question 3: Average Delivery Time per Store & % Within 15 Min
+
+* **ELT Pipeline Query (`mart_delivery_sla`)**:
 ```sql
 SELECT store_id, store_name, zone, total_delivered_orders, avg_delivery_minutes, delivered_within_15_min, pct_within_15_min
 FROM mart_delivery_sla
 ORDER BY total_delivered_orders DESC
 LIMIT 5;
 ```
-**Results Table:**
+
+* **ETL Pipeline Star Schema Query (`etl_fact_orders` + `etl_dim_store`)**:
+```sql
+SELECT 
+    s.store_id,
+    s.store_name,
+    s.zone,
+    COUNT(f.order_id) AS total_delivered_orders,
+    ROUND(AVG(f.delivery_minutes), 1) AS avg_delivery_minutes,
+    SUM(CASE WHEN f.within_15_min THEN 1 ELSE 0 END) AS delivered_within_15_min,
+    ROUND(SUM(CASE WHEN f.within_15_min THEN 1 ELSE 0 END)::FLOAT / COUNT(f.order_id) * 100, 2) AS pct_within_15_min
+FROM etl_fact_orders f
+JOIN etl_dim_store s ON f.store_id = s.store_id
+WHERE f.order_status = 'DELIVERED'
+GROUP BY s.store_id, s.store_name, s.zone
+ORDER BY total_delivered_orders DESC
+LIMIT 5;
+```
+
+**Results Table (Identical in Both Pipelines):**
 | store_id | store_name | zone | delivered_orders | avg_delivery_minutes | within_15_min | pct_within_15_min (%) |
 |---|---|---|---|---|---|---|
 | S14 | NammaMart Vijayanagar | WEST | 154 | 21.5 | 50 | 32.47% |
@@ -368,12 +433,29 @@ LIMIT 5;
 ---
 
 ### Question 4: Revenue by Payment Mode and Total Unreconciled Amount
+
+* **ELT Pipeline Query (`mart_payment_reconciliation`)**:
 ```sql
 SELECT payment_mode, total_orders, reconciled_revenue, unreconciled_transactions, unreconciled_amount
 FROM mart_payment_reconciliation
 ORDER BY reconciled_revenue DESC;
 ```
-**Results Table:**
+
+* **ETL Pipeline Star Schema Query (`etl_payment_reconciliation` + `etl_fact_orders`)**:
+```sql
+SELECT 
+    COALESCE(f.payment_mode, 'UNKNOWN') AS payment_mode,
+    COUNT(r.payment_id) AS total_orders,
+    ROUND(SUM(CASE WHEN r.is_reconciled AND f.order_status = 'DELIVERED' THEN f.net_revenue ELSE 0 END), 2) AS reconciled_revenue,
+    SUM(CASE WHEN NOT r.is_reconciled THEN 1 ELSE 0 END) AS unreconciled_transactions,
+    ROUND(SUM(CASE WHEN NOT r.is_reconciled THEN r.amount_paid ELSE 0 END), 2) AS unreconciled_amount
+FROM etl_payment_reconciliation r
+LEFT JOIN etl_fact_orders f ON r.order_id = f.order_id
+GROUP BY COALESCE(f.payment_mode, 'UNKNOWN')
+ORDER BY reconciled_revenue DESC;
+```
+
+**Results Table (Identical in Both Pipelines):**
 | payment_mode | total_orders | reconciled_revenue (₹) | unreconciled_txns | unreconciled_amount (₹) |
 |---|---|---|---|---|
 | UPI | 1,371 | 718,313.93 | 73 | 38,207.27 |
@@ -386,13 +468,34 @@ ORDER BY reconciled_revenue DESC;
 ---
 
 ### Question 5: Top 10 Customers by Spend (Masked PII)
+
+* **ELT Pipeline Query (`mart_top_customers`)**:
 ```sql
 SELECT customer_id, full_name, email_masked, phone_masked, loyalty_tier, total_orders, total_spend
 FROM mart_top_customers
 ORDER BY total_spend DESC
 LIMIT 10;
 ```
-**Results Table:**
+
+* **ETL Pipeline Star Schema Query (`etl_fact_orders` + `etl_dim_customer`)**:
+```sql
+SELECT 
+    c.customer_id,
+    c.full_name,
+    c.email_masked,
+    c.phone_masked,
+    c.loyalty_tier,
+    COUNT(f.order_id) AS total_orders,
+    ROUND(SUM(f.net_revenue), 2) AS total_spend
+FROM etl_fact_orders f
+JOIN etl_dim_customer c ON f.customer_id = c.customer_id
+WHERE f.order_status = 'DELIVERED'
+GROUP BY c.customer_id, c.full_name, c.email_masked, c.phone_masked, c.loyalty_tier
+ORDER BY total_spend DESC
+LIMIT 10;
+```
+
+**Results Table (Identical in Both Pipelines):**
 | customer_id | full_name | email_masked | phone_masked | loyalty_tier | total_orders | total_spend (₹) |
 |---|---|---|---|---|---|---|
 | C00265 | Vikram Hegde | vi***@example.com | 91******69 | GOLD | 8 | 8,849.60 |
@@ -409,6 +512,8 @@ LIMIT 10;
 ---
 
 ### Question 6: Rejected Rows by File and Reason
+
+* **ELT Pipeline Query (`stg_orders`)**:
 ```sql
 SELECT _source_file, dq_status AS failure_reason, COUNT(*) AS rejected_count
 FROM stg_orders
@@ -416,7 +521,21 @@ WHERE dq_status != 'PASSED'
 GROUP BY _source_file, dq_status
 ORDER BY rejected_count DESC;
 ```
-**Results Table:**
+
+* **ETL Pipeline Quarantine & DQ Results Query (`dq_results`)**:
+```sql
+SELECT 
+    check_name,
+    dimension,
+    severity,
+    rows_failed AS rejected_count,
+    status
+FROM dq_results
+WHERE status IN ('FAILED', 'FLAGGED')
+ORDER BY rows_failed DESC;
+```
+
+**Results Table (ELT Quarantine Breakdown):**
 | source_file | failure_reason | rejected_count |
 |---|---|---|
 | `orders.csv` | FLAGGED: Orphan customer_id | 125 |
