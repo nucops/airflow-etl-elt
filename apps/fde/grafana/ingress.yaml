@@ -1,0 +1,23 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grafana
+  namespace: fde
+  annotations:
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/description: Real-time Data Quality & Observability Dashboard for NammaMart pipelines.
+    gethomepage.dev/group: AI & Data
+    gethomepage.dev/icon: https://assets.cossth.com/icons/grafana.png
+    gethomepage.dev/name: Grafana Observability
+    gethomepage.dev/href: https://grafana.${ADDITIONAL_DOMAIN_1}
+    gethomepage.dev/siteMonitor: https://grafana.${ADDITIONAL_DOMAIN_1}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`grafana.${ADDITIONAL_DOMAIN_1}`)
+      kind: Rule
+      services:
+        - name: grafana
+          port: 3000
+  tls: {}

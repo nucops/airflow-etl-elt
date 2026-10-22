@@ -74,7 +74,7 @@ WAREHOUSE_PATH, WAREHOUSE_SHUBHAM_PATH = _resolve_output_paths(BASE_DIR)
 
 def on_failure_alert(context: dict[str, Any]) -> None:
     """Send failure alert to Slack webhook and email using Airflow Variables (Bonus requirement)."""
-    dag_id = context.get("task_instance").dag_id if context.get("task_instance") else "nammamart_elt"
+    dag_id = context.get("task_instance").dag_id if context.get("task_instance") else "nammamart_elt_shubham"
     task_id = context.get("task_instance").task_id if context.get("task_instance") else "unknown_task"
     run_id = context.get("run_id", "manual")
     exception = str(context.get("exception", "Execution error"))
@@ -156,7 +156,7 @@ def read_csv_as_raw(file_name: str, run_id: str) -> list[dict[str, Any]]:
 
 
 @dag(
-    dag_id="nammamart_elt",
+    dag_id="nammamart_elt_shubham",
     default_args=default_args,
     description="NammaMart Production ELT Pipeline with 3-Layer DuckDB Warehouse (Raw -> Stg -> Mart)",
     schedule="0 9 * * 1-6",  # 9:00 AM IST Monday to Saturday
@@ -360,13 +360,39 @@ def nammamart_elt_pipeline():
                     INSERT INTO dq_results
                     SELECT
                         '{merge_meta['run_id']}' AS run_id,
-                        'nammamart_elt' AS dag_id,
+                        'nammamart_elt_shubham' AS dag_id,
                         'elt_stg_orders_dq_rules' AS check_name,
                         'Multi-Dimensional' AS dimension,
                         'Critical' AS severity,
                         COUNT(*) AS rows_checked,
                         SUM(CASE WHEN dq_status != 'PASSED' THEN 1 ELSE 0 END) AS rows_failed,
                         CASE WHEN SUM(CASE WHEN dq_status != 'PASSED' THEN 1 ELSE 0 END) = 0 THEN 'PASSED' ELSE 'FLAGGED' END AS status,
+                        CURRENT_TIMESTAMP AS checked_at
+                    FROM stg_orders;
+
+                    INSERT INTO dq_results
+                    SELECT
+                        '{merge_meta['run_id']}' AS run_id,
+                        'nammamart_elt_shubham' AS dag_id,
+                        'elt_stg_orders_volume_check' AS check_name,
+                        'Volume' AS dimension,
+                        'Critical' AS severity,
+                        COUNT(*) AS rows_checked,
+                        CASE WHEN COUNT(*) < 200 THEN 1 ELSE 0 END AS rows_failed,
+                        CASE WHEN COUNT(*) < 200 THEN 'FAILED' ELSE 'PASSED' END AS status,
+                        CURRENT_TIMESTAMP AS checked_at
+                    FROM stg_orders;
+
+                    INSERT INTO dq_results
+                    SELECT
+                        '{merge_meta['run_id']}' AS run_id,
+                        'nammamart_elt_shubham' AS dag_id,
+                        'elt_stg_orders_distribution_check' AS check_name,
+                        'Distribution' AS dimension,
+                        'Warning' AS severity,
+                        COUNT(*) AS rows_checked,
+                        SUM(CASE WHEN unit_price > 5000 THEN 1 ELSE 0 END) AS rows_failed,
+                        CASE WHEN SUM(CASE WHEN unit_price > 5000 THEN 1 ELSE 0 END) = 0 THEN 'PASSED' ELSE 'WARNING' END AS status,
                         CURRENT_TIMESTAMP AS checked_at
                     FROM stg_orders;
                 """
@@ -409,7 +435,7 @@ def nammamart_elt_pipeline():
 
         run_record = pd.DataFrame([{
             "run_id": run_id,
-            "dag_id": "nammamart_elt",
+            "dag_id": "nammamart_elt_shubham",
             "start_time": start_time_iso,
             "end_time": end_time_iso,
             "rows_extracted": rows_extracted,

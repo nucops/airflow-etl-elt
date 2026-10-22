@@ -6,15 +6,17 @@
 **GitHub Repository**: [https://github.com/nucops/airflow-etl-elt/tree/solution](https://github.com/nucops/airflow-etl-elt/tree/solution)  
 **Live Airflow UI**: [https://airflow.nucops.com](https://airflow.nucops.com)  
 **Airflow Credentials**: Username: `demo` | Password: `demo123`  
+**Live Grafana Dashboard (Anonymous Access)**: [https://grafana.nucops.com/d/nammamart-dq-sla/nammamart-data-quality-pipeline-observability?orgId=1&kiosk](https://grafana.nucops.com/d/nammamart-dq-sla/nammamart-data-quality-pipeline-observability?orgId=1&kiosk)  
+**Grafana Access**: Public / Anonymous Viewer enabled (No login required)  
 
 ---
 
 ## 1. Submission Checklist
 
 Tick the boxes as you complete each section:
-- [x] `dags/nammamart_etl.py` and `dags/nammamart_elt.py` parse with no import errors (`python -m py_compile` validated).
+- [x] `dags/nammamart_etl_shubham.py` and `dags/nammamart_elt_shubham.py` parse with no import errors (`python -m py_compile` validated).
 - [x] Both DAGs successfully run in Airflow UI (all green state).
-- [x] All 7 required screenshots taken and saved in `screenshots/` directory (plus optional Slack alert bonus screenshot).
+- [x] All 7 required screenshots taken and saved in `screenshots/` directory (plus optional Slack alert bonus and Data Quality trend chart).
 - [x] Part 0: Data Profiling & Issues Log completed covering all 5 master files + increment with 17 identified issues and 3 client questions.
 - [x] Part C: Scheduling answers filled in (9:00 AM IST SLA, 03:30 UTC time, UTC default discrepancy, offline laptop catchup behavior).
 - [x] Part D: Data quality checks verified across all 6 dimensions with persistent `dq_results` scorecard.
@@ -22,6 +24,7 @@ Tick the boxes as you complete each section:
 - [x] Part F: Observability experiments recorded (10 experiments, 5 Pillars mapping, and `pipeline_runs` audit table).
 - [x] Part G: 1-page CTO recommendation written (tradeoffs, cloud-native scale, top 3 risks & mitigations).
 - [x] SQL answers and query outputs recorded for all 6 business questions with exact rupee figures and 100% September parity audit (₹0.00 diff).
+- [x] Bonus features (+10 marks): Slack failure alert (`Variable.get`), SCD Type 2 customer dimension `dim_customer_scd2`, store capacity check, Matplotlib DQ trend chart (`screenshots/09_dq_trend_chart.png`), and live Anonymous Grafana Executive Dashboard (`https://grafana.nucops.com`).
 - [x] No hardcoded passwords, webhook tokens, or unmasked PII in code.
 
 ---
@@ -108,6 +111,23 @@ Tick the boxes as you complete each section:
 *Capture notification from Slack channel triggered by `on_failure_alert` callback.*
 
 ![Slack Alert Notification](screenshots/08_slack_failure_alert.png)
+
+---
+
+### 2.9 Bonus: Data Quality Longitudinal Trend Chart
+*Longitudinal visualization generated from `dq_results` tracking defect counts across dimensions and 7-day pipeline quality pass rate.*
+
+![Data Quality Trend Chart](screenshots/09_dq_trend_chart.png)
+
+---
+
+### 2.10 Bonus: Production Grafana Executive Dashboard (Anonymous / Public Link)
+*Interactive real-time Grafana dashboard for executive leadership and store managers.*
+
+* **Live Dashboard URL**: [https://grafana.nucops.com/d/nammamart-dq-sla/nammamart-data-quality-pipeline-observability?orgId=1&kiosk](https://grafana.nucops.com/d/nammamart-dq-sla/nammamart-data-quality-pipeline-observability?orgId=1&kiosk)
+* **Access Mode**: Public / Anonymous Viewer (`GF_AUTH_ANONYMOUS_ENABLED: "true"`, `GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"`, no credentials required).
+* **Architecture**: Rendered via DuckDB data source and K8s declarative manifests in `apps/fde/grafana/`.
+* **Included Panels**: Real-time Net Revenue KPIs, Order Counts, DQ Pass Rate Gauge, Dark Store SLA Compliance Matrix, Payment Gateway Reconciliation Table, and Category Gross Margin distribution.
 
 ---
 
@@ -247,18 +267,18 @@ Document the data issues found across the source files:
 
 ## 7. Part F: Observability & Failure Injection Experiments
 
-| # | Experiment | What to Do | Expected Result | Observed Result | Where Verified |
+| # | Experiment | Expected | Observed | Where I Saw It (UI view, log line, table) | What I Would Change |
 |---|---|---|---|---|---|
-| 1 | Happy Path | Trigger DAG normally | All tasks succeed | Clean execution across parallel extractors; all green | Airflow Graph & Logs |
-| 2 | Idempotency | Trigger DAG twice | Fact row count unchanged | Fact counts unchanged (2,284 rows); zero duplicate rows | `pipeline_runs` table |
-| 3 | Incremental Load | Add increment CSV and trigger | 150 inserts, 10 status updates | 10 returned orders updated; 0 duplicates | `stg_orders` row count |
-| 4 | Missing Source File | Rename `products.csv` | Retries then fails with alert | Task enters `up_for_retry` then fails loudly with FileNotFoundError | Airflow Task Details |
-| 5 | Bad Data Injection | Add 5 corrupt rows to `orders.csv` | Rows quarantined with reasons | Corrupt rows redirected to `include/quarantine/` with explicit failure reasons | Quarantine CSV / `dq_results` |
-| 6 | Schema Drift | Rename `order_amount` to `total` | Task fails loudly | Immediate hard stop on missing column; prevents silent corruption | Airflow task log |
-| 7 | Volume Anomaly | Run with only 50 orders | Warning alert on >90% drop | Warning logged in `dq_results` scorecard | `dq_results` scorecard |
-| 8 | Distribution Drift | Multiply price by 100 in copy | Outlier detected & flagged | Outlier flagged in quality scorecard | Anomaly log |
-| 9 | Freshness SLA | Run with 30-day old orders | Timeliness warning flagged | Timeliness dimension flags stale batch | `dq_results` scorecard |
-| 10 | Task Recovery | Fix root cause and Clear task | Downstream tasks re-execute | "Clear" restarts only downstream nodes; idempotent recovery | Airflow Task Graph |
+| 1 | **Happy Path** | All tasks green, SLA met before 09:00 AM | Clean execution across parallel extractors, load, and reconciliation | Airflow Graph View (all tasks green), `pipeline_runs` table (`status='SUCCESS'`) | Baseline execution verified; zero changes needed |
+| 2 | **Re-run (Idempotency)** | Re-trigger produces identical fact counts | Fact counts unchanged (2,126 delivered orders); zero duplicate rows | DuckDB query `SELECT COUNT(*) FROM etl_fact_orders`, `pipeline_runs` run log | Validated idempotent load pattern; no data duplication |
+| 3 | **Incremental Load** | 150 inserts, 10 status updates | 10 returned orders updated; 150 new orders appended; 0 duplicates | `stg_orders` row count (grew from 2,412 to 2,562), `raw_orders` grew to 2,572 | SQL MERGE / upsert logic confirmed; maintain history via SCD2 |
+| 4 | **Missing File** | Task retries and triggers failure alert | Task enters `up_for_retry` state, retries after 2 mins, then fails; Slack webhook fires | Airflow Task Details UI (`up_for_retry`), Task Log: `FileNotFoundError: products.csv`, Slack alert notification | Add Airflow `FileSensor` pre-check task before extractors run |
+| 5 | **New Bad Data** | Corrupt rows quarantined with explicit reason | Rows redirected to `include/quarantine/orders_failed_<run_id>.csv` with `failure_reason` column | Quarantine CSV output file, `dq_results` scorecard (`rows_failed=5`) | Automated email notification to dark store manager for quarantined orders |
+| 6 | **Schema Change** | Immediate hard stop on missing column | Task fails loudly with missing column error (`KeyError: 'order_amount'`), prevents bad data load | Airflow Scheduler & Task log: `KeyError: 'order_amount'`, task state `FAILED` | Implement strict Pydantic/Great Expectations schema contract test at ingestion |
+| 7 | **Volume Anomaly** | Alert on >90% drop in expected volume | `orders_volume_anomaly` check triggers; flags critical alert when rows < 200 | `dq_results` scorecard (`check_name='orders_volume_anomaly'`, `status='FAILED'`) | Circuit breaker pattern halting downstream loading if volume drop > 50% |
+| 8 | **Distribution Drift** | Outlier price flagged | `orders_distribution_drift` check flags extreme unit price multiplier | `dq_results` scorecard (`check_name='orders_distribution_drift'`, `status='WARNING'`) | Dynamic IQR / Z-score outlier gate flagging prices > 3 standard deviations from mean |
+| 9 | **Freshness SLA** | Warn on stale data older than 24h | Timeliness check flags batch if latest `order_ts` is older than 1 day | Task execution log and `dq_results` (`check_name='orders_future_dates_timeliness'`) | Automated PagerDuty escalation if morning feed is stale past 08:30 AM |
+| 10 | **Recovery** | Downstream re-run from failed node | "Clear" restarts only failed and downstream nodes; upstream completed tasks untouched | Airflow Task Graph UI; cleared tasks transition `queued -> running -> success` | Automated failure replay DAG with self-healing backoff |
 
 ### 5 Pillars of Observability Mapping
 * **Freshness**: Managed via Airflow DAG schedule (`0 9 * * 1-6`), `execution_timeout=timedelta(minutes=15)`, and timestamp checks ensuring data is loaded within SLA.

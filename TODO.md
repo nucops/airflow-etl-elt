@@ -30,8 +30,8 @@ fdeM2/
 │   └── workflows/
 │       └── validate.yaml            # CI schema validation via kubeconform & secret rejection
 ├── dags/
-│   ├── nammamart_etl.py             # ETL Pipeline DAG (SLA: 09:00 IST)
-│   └── nammamart_elt.py             # ELT Pipeline DAG (SLA: 09:00 IST)
+│   ├── nammamart_etl_shubham.py     # ETL Pipeline DAG (SLA: 09:00 IST)
+│   └── nammamart_elt_shubham.py     # ELT Pipeline DAG (SLA: 09:00 IST)
 ├── include/
 │   ├── data/nammamart/              # Source CSV datasets
 │   ├── dq_checks.py                 # 6-dimension data quality assertions
@@ -100,7 +100,7 @@ fdeM2/
 ---
 
 ### Phase 3: Production ETL Pipeline in Kubernetes (Part A)
-- [x] **DAG Architecture (`dags/nammamart_etl.py`)**:
+- [x] **DAG Architecture (`dags/nammamart_etl_shubham.py`)**:
   - Scheduled at `0 9 * * 1-6` (09:00 IST Monday-Saturday).
   - Explicit timezone: `pendulum.timezone("Asia/Kolkata")`, `catchup=False`.
 - [x] **Task 1: Parallel Extraction**:

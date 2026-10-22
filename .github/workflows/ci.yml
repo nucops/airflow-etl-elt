@@ -38,8 +38,8 @@ jobs:
       - name: Verify DAG Integrity (Zero Import Errors)
         run: |
           export PYTHONPATH="$PWD:$PWD/dags:$PWD/include"
-          python -m py_compile dags/nammamart_etl.py
-          python -m py_compile dags/nammamart_elt.py
+          python -m py_compile dags/nammamart_etl_shubham.py
+          python -m py_compile dags/nammamart_elt_shubham.py
           python -m py_compile include/dq_checks.py
 
       - name: Run Data Quality Suite

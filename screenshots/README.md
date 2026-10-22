@@ -12,6 +12,7 @@ Save all your assignment verification screenshots in this directory with the fol
 | 6 | `06_pipeline_runs_query.png` | `pipeline_runs` audit table query results | Terminal (DuckDB CLI) or VS Code SQLTools |
 | 7 | `07_payment_reconciliation.png` | Payment reconciliation query results | Terminal (DuckDB CLI) or VS Code SQLTools |
 | 8 | `08_slack_failure_alert.png` *(Bonus)* | Slack channel failure alert notification | Slack Desktop / Web client |
+| 9 | `09_dq_trend_chart.png` *(Bonus)* | Data quality longitudinal trend chart | Python / Matplotlib / BI Dashboard |
 
 ---
 *Tip*: Windows shortcut to take clean snips: `Win + Shift + S`.
