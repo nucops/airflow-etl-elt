@@ -115,7 +115,10 @@ def prepare_features(df: pd.DataFrame, source_table: str):
 
     if source_table in ("mart_daily_store_kpis", "etl_fact_orders"):
         df["order_date"] = pd.to_datetime(df["order_date"])
-        df["day_of_week"] = getattr(df["order_date"].dt, "day_of_week", df["order_date"].dt.dayofweek)
+        if hasattr(df["order_date"].dt, "day_of_week"):
+            df["day_of_week"] = df["order_date"].dt.day_of_week
+        else:
+            df["day_of_week"] = df["order_date"].dt.dayofweek
         df["day_of_month"] = df["order_date"].dt.day
         df["is_weekend"] = df["day_of_week"].apply(lambda x: 1 if x >= 5 else 0)
 
@@ -223,7 +226,7 @@ def predict_future_revenue(model: LinearRegression, metadata: dict) -> pd.DataFr
 
         records = []
         for d in future_dates:
-            day_of_week = getattr(d, "dayofweek", d.weekday())
+            day_of_week = d.weekday()
             day_of_month = d.day
             is_weekend = 1 if day_of_week >= 5 else 0
 

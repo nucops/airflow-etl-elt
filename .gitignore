@@ -1,6 +1,7 @@
 # Environment & Astro
 .astro/
 airflow_settings.yaml
+uv.lock
 __pycache__/
 *.pyc
 *.pyo

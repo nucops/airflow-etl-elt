@@ -169,14 +169,14 @@ Write a concise root cause analysis (3-4 sentences):
         for key, issues in summary.items():
             if isinstance(issues, list):
                 for issue in issues:
-                    lines.append(f"• {key}: {issue}")
+                    lines.append(f"* {key}: {issue}")
             elif isinstance(issues, dict):
                 for subkey, count in issues.items():
-                    lines.append(f"• {key} ({subkey}): {count} occurrences")
+                    lines.append(f"* {key} ({subkey}): {count} occurrences")
             else:
-                lines.append(f"• {key}: {issues}")
+                lines.append(f"* {key}: {issues}")
 
-        issues_formatted = "\n".join(lines) if lines else "• Data quality anomaly detected across input files."
+        issues_formatted = "\n".join(lines) if lines else "* Data quality anomaly detected across input files."
         root_cause = (
             f"Quality validation for {pipeline_name} at {checked_at} identified {failed_count} failing record(s).\n"
             f"{issues_formatted}\n"
@@ -232,14 +232,14 @@ Generate a concise Slack alert message (under 6 lines):
             llm = None
 
     if not llm:
-        # Deterministic Slack card template
+        # Deterministic Slack card template (Slack markup format)
         slack_message = (
-            f"🚨 *{pipeline_name} — Data Quality Alert*\n"
-            f"🕐 Run Time: `{checked_at}`\n"
-            f"✅ Clean Records Loaded: *{passed_count:,}*\n"
-            f"❌ Records Quarantined: *{failed_count:,}*\n"
-            f"📋 *Root Cause Summary:*\n{root_cause}\n"
-            f"👉 *Action:* Inspect `include/quarantine/` and `dq_results` audit table for triage."
+            f":rotating_light: *{pipeline_name} — Data Quality Alert*\n"
+            f"Run Time: `{checked_at}`\n"
+            f":white_check_mark: Clean Records Loaded: *{passed_count:,}*\n"
+            f":x: Records Quarantined: *{failed_count:,}*\n"
+            f"*Root Cause Summary:*\n{root_cause}\n"
+            f"*Action:* Inspect `include/quarantine/` and `dq_results` audit table for triage."
         )
 
     state["slack_message"] = slack_message
@@ -272,7 +272,15 @@ def build_graph():
         return SimpleGraphRunner()
 
 
-# ── Public APIs Called by Airflow Tasks ───────────────────────────────────────
+def _safe_print(text: str) -> None:
+    try:
+        print(text)
+    except Exception:
+        try:
+            print(text.encode("ascii", errors="replace").decode("ascii"))
+        except Exception:
+            pass
+
 
 def explain_failures(gx_result: dict) -> str:
     """
@@ -300,8 +308,8 @@ def explain_failures(gx_result: dict) -> str:
         "slack_message": "",
     })
 
-    print(f"\n[AI Explainer] Root Cause Analysis:\n{final_state['root_cause']}")
-    print(f"\n[AI Explainer] Slack Message:\n{final_state['slack_message']}\n")
+    _safe_print(f"\n[AI Explainer] Root Cause Analysis:\n{final_state['root_cause']}")
+    _safe_print(f"\n[AI Explainer] Slack Message:\n{final_state['slack_message']}\n")
     return final_state["slack_message"]
 
 
@@ -335,7 +343,7 @@ def explain_quarantine(
         "slack_message": "",
     })
 
-    print(f"\n[AI Explainer] Pipeline: {pipeline_name}")
-    print(f"[AI Explainer] Root Cause:\n{final_state['root_cause']}")
-    print(f"[AI Explainer] Slack Alert:\n{final_state['slack_message']}\n")
+    _safe_print(f"\n[AI Explainer] Pipeline: {pipeline_name}")
+    _safe_print(f"[AI Explainer] Root Cause:\n{final_state['root_cause']}")
+    _safe_print(f"[AI Explainer] Slack Alert:\n{final_state['slack_message']}\n")
     return final_state["slack_message"]

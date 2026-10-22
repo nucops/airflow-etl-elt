@@ -462,11 +462,28 @@ def nammamart_elt_pipeline():
             except Exception as e:
                 print(f"Failed to record pipeline audit in {wh}: {e}")
 
+    # -------------------------------------------------------------------------
+    # Layer 4: Downstream ML Revenue Forecasting (Scikit-Learn)
+    # -------------------------------------------------------------------------
+    @task
+    def train_and_predict(marts_res: Any = None) -> dict[str, Any]:
+        """Trains ML regression model on clean analytical marts and forecasts 7-day revenue."""
+        try:
+            from ml_forecast import run_ml_forecast
+            target_wh = WAREHOUSE_SHUBHAM_PATH if os.path.exists(WAREHOUSE_SHUBHAM_PATH) else WAREHOUSE_PATH
+            res = run_ml_forecast(target_wh)
+            print(f"[ELT Pipeline ML] Model trained on {res.get('rows_trained')} rows | MAE: INR {res.get('mae')} | R^2: {res.get('r2')}")
+            return res
+        except Exception as e:
+            print(f"[ELT Pipeline ML] Downstream ML training non-fatal error: {e}")
+            return {"status": "error", "message": str(e)}
+
     raw = load_raw_tables()
     stg = run_staging_transformations(raw)
     inc = run_incremental_merge(stg)
     marts = build_marts(inc)
-    record_pipeline_run(marts)
+    ml_forecast_res = train_and_predict(marts)
+    marts >> ml_forecast_res >> record_pipeline_run(marts)
 
 
 elt_dag = nammamart_elt_pipeline()
