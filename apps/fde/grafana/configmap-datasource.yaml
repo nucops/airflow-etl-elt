@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-provider
+  namespace: fde
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: DuckDB-NammaMart
+        type: motherduck-duckdb-datasource
+        access: proxy
+        isDefault: true
+        jsonData:
+          path: /opt/airflow/warehouse/warehouse.duckdb
+          readOnly: true
+        editable: true

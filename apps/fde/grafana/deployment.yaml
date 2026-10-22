@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: grafana
-          image: grafana/grafana:10.4.0
+          image: grafana/grafana:10.4.0-ubuntu
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -40,13 +40,21 @@ spec:
             - name: GF_SECURITY_ADMIN_PASSWORD
               value: "admin"
             - name: GF_AUTH_ANONYMOUS_ENABLED
-              value: "true"
+              value: "false"
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE
               value: "Viewer"
             - name: GF_AUTH_ANONYMOUS_ORG_NAME
               value: "Main Org."
             - name: GF_SECURITY_ALLOW_EMBEDDING
               value: "true"
+            - name: GF_PUBLIC_DASHBOARDS_ENABLED
+              value: "true"
+            - name: GF_FEATURE_TOGGLES_ENABLE
+              value: "publicDashboards"
+            - name: GF_INSTALL_PLUGINS
+              value: "https://github.com/motherduckdb/grafana-duckdb-datasource/releases/download/v0.4.6/motherduck-duckdb-datasource-0.4.6.zip;motherduck-duckdb-datasource"
+            - name: GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS
+              value: "motherduck-duckdb-datasource"
             - name: GF_SERVER_ROOT_URL
               value: "https://grafana.${ADDITIONAL_DOMAIN_1}"
             - name: GF_USERS_ALLOW_SIGN_UP
@@ -58,33 +66,53 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
-          livenessProbe:
-            httpGet:
-              path: /api/health
-              port: 3000
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          readinessProbe:
+              cpu: 1000m
+              memory: 1Gi
+          startupProbe:
             httpGet:
               path: /api/health
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
           volumeMounts:
             - name: provisioning-dashboards
               mountPath: /etc/grafana/provisioning/dashboards
               readOnly: true
+            - name: provisioning-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
             - name: dashboard-models
               mountPath: /var/lib/grafana/dashboards
+              readOnly: true
+            - name: warehouse-storage
+              mountPath: /opt/airflow/warehouse
               readOnly: true
       volumes:
         - name: provisioning-dashboards
           configMap:
             name: grafana-dashboard-provider
+        - name: provisioning-datasources
+          configMap:
+            name: grafana-datasource-provider
         - name: dashboard-models
           configMap:
             name: grafana-nammamart-dashboard
+        - name: warehouse-storage
+          persistentVolumeClaim:
+            claimName: airflow-warehouse-pvc
+            readOnly: true
