@@ -35,6 +35,10 @@ else:
 
 DATA_DIR = os.path.join(BASE_DIR, "include", "data", "nammamart")
 SQL_DIR = os.path.join(BASE_DIR, "include", "sql")
+_INCLUDE_DIR = os.path.join(BASE_DIR, "include")
+import sys
+if _INCLUDE_DIR not in sys.path:
+    sys.path.insert(0, _INCLUDE_DIR)
 
 
 def _resolve_output_paths(base_dir: str) -> tuple[str, str]:
@@ -79,26 +83,16 @@ def on_failure_alert(context: dict[str, Any]) -> None:
     run_id = context.get("run_id", "manual")
     exception = str(context.get("exception", "Execution error"))
 
-    # 1. Slack Notification
+    # 1. Slack Notification via include/slack_notifier.py
     try:
-        from airflow.models import Variable
-        webhook_url = Variable.get("SLACK_WEBHOOK_URL", default_var=None)
-        if webhook_url:
-            payload = {
-                "text": (
-                    f":rotating_light: *NammaMart ELT Pipeline Failure Alert*\n"
-                    f"*DAG*: `{dag_id}` | *Task*: `{task_id}`\n"
-                    f"*Run ID*: `{run_id}`\n"
-                    f"*Error*: `{exception}`"
-                )
-            }
-            req = urllib.request.Request(
-                webhook_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            urllib.request.urlopen(req, timeout=5)
-            print("Successfully dispatched Slack failure alert.")
+        from slack_notifier import send_slack_alert
+        slack_msg = (
+            f"🚨 *NammaMart ELT Pipeline Failure Alert*\n"
+            f"*DAG*: `{dag_id}` | *Task*: `{task_id}`\n"
+            f"*Run ID*: `{run_id}`\n"
+            f"*Error*: `{exception}`"
+        )
+        send_slack_alert(slack_msg)
     except Exception as e:
         print(f"Notice: Slack failure alert notification could not be sent: {e}")
 
@@ -129,7 +123,7 @@ default_args = {
     "depends_on_past": False,
     "email_on_failure": True,
     "email_on_retry": False,
-    "retries": 1,
+    "retries": 2,
     "retry_delay": timedelta(minutes=2),
     "execution_timeout": timedelta(minutes=15),
     "on_failure_callback": on_failure_alert,

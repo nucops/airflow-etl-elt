@@ -1,8 +1,12 @@
 pandas
 duckdb
 scikit-learn
-apache-airflow-providers-slack
+langgraph
+langchain
+langchain-openai
+openai
 slack_sdk
+apache-airflow-providers-slack
 pendulum
 ruff
 pytest

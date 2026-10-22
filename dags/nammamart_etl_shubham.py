@@ -32,9 +32,11 @@ elif os.path.exists("/opt/airflow/dags/repo/include/data/nammamart"):
     BASE_DIR = "/opt/airflow/dags/repo"
 else:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 DATA_DIR = os.path.join(BASE_DIR, "include", "data", "nammamart")
-
+_INCLUDE_DIR = os.path.join(BASE_DIR, "include")
+import sys
+if _INCLUDE_DIR not in sys.path:
+    sys.path.insert(0, _INCLUDE_DIR)
 
 def _resolve_output_paths(base_dir: str) -> tuple[str, str, str]:
     """Resolve writable paths for quarantine and DuckDB warehouses."""
@@ -80,26 +82,16 @@ def on_failure_alert(context: dict[str, Any]) -> None:
     run_id = context.get("run_id", "manual")
     exception = str(context.get("exception", "Execution error"))
 
-    # 1. Slack Notification
+    # 1. Slack Notification via include/slack_notifier.py
     try:
-        from airflow.models import Variable
-        webhook_url = Variable.get("SLACK_WEBHOOK_URL", default_var=None)
-        if webhook_url:
-            payload = {
-                "text": (
-                    f":rotating_light: *NammaMart Pipeline Failure Alert*\n"
-                    f"*DAG*: `{dag_id}` | *Task*: `{task_id}`\n"
-                    f"*Run ID*: `{run_id}`\n"
-                    f"*Error*: `{exception}`"
-                )
-            }
-            req = urllib.request.Request(
-                webhook_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            urllib.request.urlopen(req, timeout=5)
-            print("Successfully dispatched Slack failure alert.")
+        from slack_notifier import send_slack_alert
+        slack_msg = (
+            f"🚨 *NammaMart Pipeline Failure Alert*\n"
+            f"*DAG*: `{dag_id}` | *Task*: `{task_id}`\n"
+            f"*Run ID*: `{run_id}`\n"
+            f"*Error*: `{exception}`"
+        )
+        send_slack_alert(slack_msg)
     except Exception as e:
         print(f"Notice: Slack failure alert notification could not be sent: {e}")
 
@@ -130,7 +122,7 @@ default_args = {
     "depends_on_past": False,
     "email_on_failure": True,
     "email_on_retry": False,
-    "retries": 1,
+    "retries": 2,
     "retry_delay": timedelta(minutes=2),
     "execution_timeout": timedelta(minutes=15),
     "on_failure_callback": on_failure_alert,
@@ -881,7 +873,64 @@ def nammamart_etl_pipeline():
         return {"status": "SUCCESS", "delivered_at": pendulum.now(LOCAL_TZ).to_iso8601_string()}
 
     # -------------------------------------------------------------------------
-    # Step 6: Observability Run Audit Task (trigger_rule="all_done")
+    # Step 6: AI Explainer Task (LangGraph + NVIDIA NIM / Azure / OpenAI)
+    # -------------------------------------------------------------------------
+    @task
+    def ai_explain_quarantine(val_res: dict[str, Any]) -> str:
+        """AI Explainer Task: Analyzes quarantined rows with LLM and sends Slack card."""
+        try:
+            from ai_explainer import explain_quarantine
+            from slack_notifier import send_slack_alert
+
+            total_quarantined = val_res.get("total_quarantined", 0)
+            total_extracted = val_res.get("total_extracted", 0)
+            passed_count = total_extracted - total_quarantined
+
+            quarantine_summary = {
+                "orders_quarantined": val_res.get("orders_quarantined", 0),
+                "payments_quarantined": val_res.get("payments_quarantined", 0),
+                "customers_quarantined": val_res.get("customers_quarantined", 0),
+                "products_quarantined": val_res.get("products_quarantined", 0),
+                "stores_quarantined": val_res.get("stores_quarantined", 0),
+                "failed_dq_checks": [
+                    f"{m['check_name']} ({m['dimension']}): {m['rows_failed']} rows"
+                    for m in val_res.get("dq_metrics", [])
+                    if m.get("status") in ("FAILED", "WARNING") and m.get("rows_failed", 0) > 0
+                ],
+            }
+
+            alert_text = explain_quarantine(
+                quarantine_summary=quarantine_summary,
+                pipeline_name="NammaMart Production ETL Pipeline",
+                passed_count=passed_count,
+                failed_count=total_quarantined,
+                checked_at=val_res.get("checked_at"),
+            )
+            if alert_text:
+                send_slack_alert(alert_text)
+            return alert_text
+        except Exception as e:
+            print(f"[AI Explainer] Non-fatal notification error: {e}")
+            return ""
+
+    # -------------------------------------------------------------------------
+    # Step 7: Downstream ML Revenue Forecasting (Scikit-Learn)
+    # -------------------------------------------------------------------------
+    @task
+    def train_and_predict(recon_res: Any = None) -> dict[str, Any]:
+        """Trains ML regression model on clean star schema and projects 7-day store revenue."""
+        try:
+            from ml_forecast import run_ml_forecast
+            target_wh = WAREHOUSE_SHUBHAM_PATH if os.path.exists(WAREHOUSE_SHUBHAM_PATH) else WAREHOUSE_PATH
+            res = run_ml_forecast(target_wh)
+            print(f"[ML Pipeline] Model trained on {res.get('rows_trained')} rows | MAE: INR {res.get('mae')} | R^2: {res.get('r2')}")
+            return res
+        except Exception as e:
+            print(f"[ML Pipeline] Downstream ML training non-fatal error: {e}")
+            return {"status": "error", "message": str(e)}
+
+    # -------------------------------------------------------------------------
+    # Step 8: Observability Run Audit Task (trigger_rule="all_done")
     # -------------------------------------------------------------------------
     @task(trigger_rule="all_done")
     def record_pipeline_run(recon_res: Any = None, **context: Any) -> None:
@@ -942,9 +991,12 @@ def nammamart_etl_pipeline():
     validation_summary = validate_and_quarantine(
         raw_orders, raw_payments, raw_customers, raw_products, raw_stores
     )
+    ai_alert = ai_explain_quarantine(validation_summary)
     load_summary = transform_and_load(validation_summary)
     recon_summary = reconcile_payments(load_summary)
     reports = build_daily_reports(recon_summary)
+    ml_forecast_res = train_and_predict(recon_summary)
+    reports >> ml_forecast_res
     record_pipeline_run(recon_summary)
 
 
