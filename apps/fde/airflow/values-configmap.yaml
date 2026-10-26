@@ -72,6 +72,14 @@ data:
     # -- Scheduler configuration
     scheduler:
       replicas: 1
+      startupProbe:
+        failureThreshold: 30
+        periodSeconds: 10
+        timeoutSeconds: 60
+      livenessProbe:
+        failureThreshold: 5
+        periodSeconds: 30
+        timeoutSeconds: 60
       resources:
         requests:
           cpu: 250m
@@ -84,6 +92,14 @@ data:
     triggerer:
       enabled: true
       replicas: 1
+      startupProbe:
+        failureThreshold: 30
+        periodSeconds: 10
+        timeoutSeconds: 60
+      livenessProbe:
+        failureThreshold: 5
+        periodSeconds: 30
+        timeoutSeconds: 60
       resources:
         requests:
           cpu: 100m
