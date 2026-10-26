@@ -18,6 +18,6 @@ spec:
     - match: Host(`airflow.${ADDITIONAL_DOMAIN_1}`)
       kind: Rule
       services:
-        - name: airflow-webserver
+        - name: airflow-api-server
           port: 8080
   tls: {}

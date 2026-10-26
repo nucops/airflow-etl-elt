@@ -10,9 +10,9 @@ data:
     # Ref: https://airflow.apache.org/docs/helm-chart/stable/index.html
 
     # -- Airflow version and image
-    airflowVersion: "2.11.0"
+    airflowVersion: "3.3.2"
     defaultAirflowRepository: apache/airflow
-    defaultAirflowTag: "2.11.0"
+    defaultAirflowTag: "3.3.2"
 
     # -- Executor: KubernetesExecutor for per-task pod isolation
     executor: KubernetesExecutor
