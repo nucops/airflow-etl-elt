@@ -104,6 +104,20 @@ data:
           cpu: 500m
           memory: 1Gi
 
+    # -- Dag Processor for standalone dag processing (Airflow 3+)
+    dagProcessor:
+      livenessProbe:
+        failureThreshold: 5
+        periodSeconds: 30
+        timeoutSeconds: 60
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+
     # -- Extra environment variables (auto-installs duckdb and pandas)
     extraEnv: |
       - name: _PIP_ADDITIONAL_REQUIREMENTS
