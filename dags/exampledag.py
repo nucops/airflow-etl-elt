@@ -34,7 +34,7 @@ def example_astronauts():
     @task(outlets=[Asset("current_astronauts")])
     def get_astronauts(**context) -> list[dict]:
         try:
-            r = requests.get("http://api.open-notify.org/astros.json", timeout=10)
+            r = requests.get("https://api.open-notify.org/astros.json", timeout=10)
             r.raise_for_status()
             number_of_people_in_space = r.json()["number"]
             list_of_people_in_space = r.json()["people"]

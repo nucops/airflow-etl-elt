@@ -52,16 +52,23 @@ def send_slack_alert(message: str, webhook_url: str = None) -> bool:
         print(divider + "\n")
         return False
 
+    url = url.strip()
+    if not url.startswith("https://hooks.slack.com/"):
+        print(f"[Slack Notifier] Invalid webhook URL: {url} (must start with https://hooks.slack.com/)")
+        return False
+
     # 3. HTTP POST to Slack Webhook
     payload = json.dumps({"text": message}).encode("utf-8")
     req = urllib.request.Request(
-        url.strip(),
+        url,
         data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
 
     try:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:
             status = resp.status
             print(f"[Slack Notifier] Alert successfully delivered to Slack. HTTP {status}")
