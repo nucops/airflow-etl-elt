@@ -20,7 +20,7 @@ spec:
     topologyKey: kubernetes.io/hostname
 
   storage:
-    size: 32Gi
+    size: 64Gi
     storageClass: ${DB_SC}
     resizeInUseVolumes: true
 
